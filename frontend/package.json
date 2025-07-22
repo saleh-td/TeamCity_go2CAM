@@ -1,0 +1,18 @@
+{
+  "name": "teamcity-dashboard-frontend",
+  "version": "1.0.0",
+  "description": "Frontend pour TeamCity Dashboard",
+  "main": "index.html",
+  "scripts": {
+    "dev": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch",
+    "build": "tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --minify",
+    "serve": "python -m http.server 8080"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.3.0",
+    "@tailwindcss/forms": "^0.5.7"
+  },
+  "dependencies": {
+    "lucide": "^0.294.0"
+  }
+} 

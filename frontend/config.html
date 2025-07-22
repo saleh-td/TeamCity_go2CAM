@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration des Builds | TeamCity Monitor</title>
+    <link rel="stylesheet" href="assets/css/Dashboard.css">
+    <link rel="stylesheet" href="assets/css/Config.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo" onclick="goBackToDashboard()">
+                <div class="logo-icon">TC</div>
+                <div class="logo-text">Configuration des Builds</div>
+            </div>
+            <div class="header-actions">
+                <button class="back-button" onclick="goBackToDashboard()">
+                    <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+                    <span>Retour au Dashboard</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="config-main">
+        <div class="config-header">
+            <h1>
+                <i data-lucide="git-branch" style="width: 24px; height: 24px; color: #ffa657;"></i>
+                Sélection des Builds
+            </h1>
+            <p>Sélectionnez les builds à afficher dans le dashboard (reproduction de l'arborescence TeamCity)</p>
+        </div>
+
+        <div class="config-controls">
+            <div class="controls-left">
+                <button class="control-btn" onclick="expandAllBuilds()">
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                    Tout développer
+                </button>
+                <button class="control-btn" onclick="collapseAllBuilds()">
+                    <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                    Tout réduire
+                </button>
+                <button class="control-btn" onclick="selectAllBuilds()">
+                    <i data-lucide="check-square" style="width: 14px; height: 14px;"></i>
+                    Tout sélectionner
+                </button>
+                <button class="control-btn" onclick="deselectAllBuilds()">
+                    <i data-lucide="square" style="width: 14px; height: 14px;"></i>
+                    Tout désélectionner
+                </button>
+            </div>
+            <div class="controls-right">
+                <button class="save-btn" onclick="saveConfiguration()">
+                    <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+                    Sauvegarder la sélection
+                </button>
+            </div>
+        </div>
+
+        <div class="builds-tree-wrapper">
+            <div class="builds-tree" id="builds-tree">
+                <div class="loading-builds">
+                    <i data-lucide="loader-2" style="width: 16px; height: 16px;"></i>
+                    Chargement de l'arborescence des builds...
+                </div>
+            </div>
+        </div>
+
+        <div class="builds-summary" id="builds-summary">
+            <span class="summary-text">Builds sélectionnés: <strong id="selected-builds-count">0</strong> / <strong id="total-builds-count">0</strong></span>
+        </div>
+    </main>
+
+    <script src="assets/js/Config.js"></script>
+    <script>
+        // Initialiser Lucide Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html> 
