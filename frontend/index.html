@@ -16,27 +16,30 @@
                 <div class="logo-text">TeamCity Monitor</div>
             </div>
             <div class="header-stats" id="header-stats">
-                <div class="stat-item" onclick="showModal('success')">
-                    <i data-lucide="check-circle" style="color: #3fb950; width: 16px; height: 16px;"></i>
-                    <span id="success-count">0</span>
+                <!--  NAVBAR AVEC CARTES DIRECTES (demande du Scrum Master) -->
+                <div class="navbar-stat-card success" onclick="showModal('success')" title="Builds réussis">
+                    <div class="navbar-stat-number" id="navbar-success-count">0</div>
+                    <div class="navbar-stat-label">RÉUSSIS</div>
                 </div>
-                <div class="stat-item" onclick="showModal('failure')">
-                    <i data-lucide="x-circle" style="color: #f85149; width: 16px; height: 16px;"></i>
-                    <span id="failure-count">0</span>
+                <div class="navbar-stat-card failure" onclick="showModal('failure')" title="Builds échoués">
+                    <div class="navbar-stat-number" id="navbar-failure-count">0</div>
+                    <div class="navbar-stat-label">ÉCHOUÉS</div>
                 </div>
-                <div class="stat-item" onclick="showModal('running')">
-                    <i data-lucide="play-circle" style="color: #57f287; width: 16px; height: 16px;"></i>
-                    <span id="running-count">0</span>
+                <div class="navbar-stat-card running" onclick="showModal('running')" title="Builds en cours">
+                    <div class="navbar-stat-number" id="navbar-running-count">0</div>
+                    <div class="navbar-stat-label">EN COURS</div>
                 </div>
-                <div class="stat-item" onclick="showModal('agents')">
-                    <i data-lucide="server" style="color: #9a63d4; width: 16px; height: 16px;"></i>
-                    <span id="agents-count">0</span>
+                <div class="navbar-stat-card agents" onclick="showModal('agents')" title="Agents TeamCity">
+                    <div class="navbar-stat-number" id="navbar-agents-count">0</div>
+                    <div class="navbar-stat-label">AGENTS</div>
                 </div>
-                <div class="stat-item" onclick="showModal('overview')">
-                    <i data-lucide="layout-grid" style="color: #58a6ff; width: 16px; height: 16px;"></i>
-                    <span id="total-count">0/0</span>
+                
+                <!--  POINTS VOYANTS AGENTS -->
+                <div class="agent-indicators" id="agent-indicators">
+                    <!-- Les points voyants seront générés dynamiquement -->
                 </div>
-                <div class="config-button" onclick="openConfigPage()">
+                
+                <div class="config-button" onclick="openConfigPage()" title="Configuration">
                     <i data-lucide="settings" style="color: #8b949e; width: 18px; height: 18px;"></i>
                 </div>
             </div>
@@ -77,6 +80,21 @@
                         <div class="zone-badge" id="count-new">0</div>
                     </div>
                     <div class="builds-grid" id="builds-new">
+                        <div class="loading">Chargement...</div>
+                    </div>
+                </div>
+
+                <!-- Zone Projet 3 -->
+                <div class="build-zone zone-project3">
+                    <div class="zone-header">
+                        <div class="zone-title">
+                            <!-- TAILLE DES ICÔNES PRINCIPALES - MODIFIER ICI -->
+                            <i data-lucide="git-branch" class="zone-icon" style="color: #f59e0b; width: 22px; height: 22px;"></i>
+                            <span id="title-project3">Projet 3</span>
+                        </div>
+                        <div class="zone-badge" id="count-project3">0</div>
+                    </div>
+                    <div class="builds-grid" id="builds-project3">
                         <div class="loading">Chargement...</div>
                     </div>
                 </div>
@@ -163,11 +181,31 @@
                 <button class="modal-close" onclick="closeModal('overview')">
                     <i data-lucide="x" style="width: 20px; height: 20px;"></i>
                 </button>
-                    </div>
+            </div>
             <div class="modal-body">
-                <div id="overview-content"></div>
+                <!--  STATISTIQUES COMPLÈTES (comme sur l'image) -->
+                <div class="overview-stats">
+                    <div class="stat-card success">
+                        <div class="stat-number" id="overview-success-count">0</div>
+                        <div class="stat-label">Réussis</div>
+                    </div>
+                    <div class="stat-card failure">
+                        <div class="stat-number" id="overview-failure-count">0</div>
+                        <div class="stat-label">Échoués</div>
+                    </div>
+                    <div class="stat-card running">
+                        <div class="stat-number" id="overview-running-count">0</div>
+                        <div class="stat-label">En cours</div>
+                    </div>
+                    <div class="stat-card agents">
+                        <div class="stat-number" id="overview-agents-count">0</div>
+                        <div class="stat-label">Agents</div>
+                    </div>
+                </div>
+                
+                <!--  SECTION AGENTS DÉTAILLÉE -->
                 <div class="agents-section">
-                    <h3 style="color: #f0f6fc; margin: 0 0 16px 0;">Agents</h3>
+                    <h3 style="color: #f0f6fc; margin: 20px 0 16px 0;">Agents</h3>
                     <div id="overview-agents" class="agents-grid"></div>
                 </div>
             </div>

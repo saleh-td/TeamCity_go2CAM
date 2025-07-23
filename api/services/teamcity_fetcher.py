@@ -49,10 +49,9 @@ def fetch_teamcity_builds_alternative() -> List[Dict[str, Any]]:
     }
 
     try:
-        # URL compatible avec la logique PHP : récupère seulement les 39 builds les plus récents
-        # Ceci reproduit EXACTEMENT le comportement de l'ancien système PHP
-        # qui récupère un nombre limité de builds par défaut
-        url = f"{TEAMCITY_URL}/app/rest/builds?locator=count:39&fields=build(id,buildTypeId,number,status,state,webUrl,buildType(id,name,projectName))"
+        # 🎯 RÉCUPÉRER LES BUILDS EN COURS ET FINIS
+        # URL pour récupérer les builds en cours ET les builds finis récents
+        url = f"{TEAMCITY_URL}/app/rest/builds?locator=running:any,failedToStart:any,count:50&fields=build(id,buildTypeId,number,status,state,webUrl,buildType(id,name,projectName))"
         
         logger.info(f"Récupération builds (logique PHP: 39 builds max): {url}")
         response = requests.get(url, headers=headers, timeout=10)
@@ -153,7 +152,7 @@ def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
             
             # Récupérer le statut du build le plus récent pour ce buildType
             try:
-                status_url = f"{TEAMCITY_URL}/app/rest/buildTypes/id:{buildtype_id}/builds?locator=count:1&fields=build(status,state,webUrl)"
+                status_url = f"{TEAMCITY_URL}/app/rest/buildTypes/id:{buildtype_id}/builds?locator=running:any,failedToStart:any,count:1&fields=build(status,state,webUrl)"
                 status_response = requests.get(status_url, headers=headers, timeout=5)
                 if status_response.status_code == 200:
                     status_root = ET.fromstring(status_response.text)

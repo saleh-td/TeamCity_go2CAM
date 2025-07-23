@@ -18,22 +18,30 @@ cache: Dict[str, Any] = {
     "teamcity_agents": None,
     "builds_timestamp": None,
     "agents_timestamp": None,
-    "ttl": timedelta(minutes=2)
+    "ttl": timedelta(minutes=5)  # Augmenter le cache à 5 minutes
 }
 
 @router.get("/builds")
 async def get_builds():
     """Récupère tous les builds (compatible API PHP)."""
     try:
-        # Récupérer les builds depuis TeamCity (live)
-        builds_data = await get_teamcity_builds_direct()
+        # Utiliser le cache optimisé
+        now = datetime.now()
         
+        # Vérifier le cache en premier
+        if (cache["teamcity_builds"] is not None and 
+            cache["builds_timestamp"] is not None and 
+            now - cache["builds_timestamp"] < cache["ttl"]):
+            return {"builds": cache["teamcity_builds"]}
+        
+        # Si pas de cache valide, récupérer les données
+        builds_data = await get_teamcity_builds_direct()
         return {"builds": builds_data}
         
     except Exception as e:
         logger.error(f"Erreur get_builds: {str(e)}")
-        # Retourner un tableau vide en cas d'erreur pour éviter les plantages frontend
-        return {"builds": []}
+        # Retourner le cache même expiré en cas d'erreur
+        return {"builds": cache.get("teamcity_builds", [])}
 
 @router.get("/builds/classified")
 async def get_builds_classified():
@@ -304,15 +312,12 @@ async def get_teamcity_builds():
         if (cache["teamcity_builds"] is not None and 
             cache["builds_timestamp"] is not None and 
             now - cache["builds_timestamp"] < cache["ttl"]):
-            logger.info("Retour des builds TeamCity depuis le cache")
             return {
                 "builds": cache["teamcity_builds"],
                 "count": len(cache["teamcity_builds"]),
                 "cached": True,
                 "cache_age_seconds": (now - cache["builds_timestamp"]).total_seconds()
             }
-        
-        logger.info("Récupération des builds TeamCity en cours...")
         builds = await asyncio.wait_for(
             run_in_threadpool(fetch_all_teamcity_builds),
             timeout=30.0  # Timeout de 30 secondes
@@ -320,8 +325,6 @@ async def get_teamcity_builds():
 
         cache["teamcity_builds"] = builds
         cache["builds_timestamp"] = now
-        
-        logger.info(f"Récupération terminée: {len(builds)} builds trouvés")
         
         return {
             "builds": builds,
@@ -487,15 +490,12 @@ async def get_agents():
         if (cache["teamcity_agents"] is not None and 
             cache["agents_timestamp"] is not None and 
             now - cache["agents_timestamp"] < cache["ttl"]):
-            logger.info("Retour des agents TeamCity depuis le cache")
             return {
                 "agents": cache["teamcity_agents"],
                 "count": len(cache["teamcity_agents"]),
                 "cached": True,
                 "cache_age_seconds": (now - cache["agents_timestamp"]).total_seconds()
             }
-        
-        logger.info("Récupération des agents TeamCity en cours...")
         agents = await asyncio.wait_for(
             run_in_threadpool(fetch_teamcity_agents),
             timeout=30.0
@@ -504,8 +504,6 @@ async def get_agents():
         # Mettre à jour le cache
         cache["teamcity_agents"] = agents
         cache["agents_timestamp"] = now
-        
-        logger.info(f"Récupération terminée: {len(agents)} agents trouvés")
         
         return {
             "agents": agents,
@@ -658,7 +656,7 @@ async def get_configuration():
         # Extraire la sélection de builds
         selected_builds = user_config.get("builds", {}).get("selectedBuilds", [])
         
-        logger.info(f"Configuration chargée: {len(selected_builds)} builds sélectionnés")
+
         
         # STRUCTURE UNIFIÉE pour compatibilité Dashboard.js
         return {
@@ -684,6 +682,8 @@ async def get_configuration():
             "total_selected": 0
         }
 
+
+
 @router.post("/builds/tree/selection")
 async def save_builds_selection(selection_data: dict):
     """Sauvegarde la sélection de builds de l'utilisateur."""
@@ -703,7 +703,7 @@ async def save_builds_selection(selection_data: dict):
         from .configurations import save_config
         save_config(user_config)
         
-        logger.info(f"Sélection de builds sauvegardée: {len(selected_builds)} builds")
+
         
         return {
             "success": True,

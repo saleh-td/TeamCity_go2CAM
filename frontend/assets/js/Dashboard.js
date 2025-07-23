@@ -72,32 +72,17 @@ function fillAgentsModal() {
 }
 
 function fillOverviewModal() {
-    const overview = document.getElementById('overview-content');
-    const agents = document.getElementById('overview-agents');
-    
+
     const stats = getDetailedStats();
-    overview.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px;">
-            <div style="background: rgba(63, 185, 80, 0.1); border: 1px solid rgba(63, 185, 80, 0.3); border-radius: 8px; padding: 16px; text-align: center;">
-                <div style="color: #3fb950; font-size: 24px; font-weight: bold;">${stats.success}</div>
-                <div style="color: #7d8590; font-size: 12px;">Réussis</div>
-            </div>
-            <div style="background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 8px; padding: 16px; text-align: center;">
-                <div style="color: #f85149; font-size: 24px; font-weight: bold;">${stats.failure}</div>
-                <div style="color: #7d8590; font-size: 12px;">Échoués</div>
-            </div>
-            <div style="background: rgba(255, 166, 87, 0.1); border: 1px solid rgba(255, 166, 87, 0.3); border-radius: 8px; padding: 16px; text-align: center;">
-                <div style="color: #ffa657; font-size: 24px; font-weight: bold;">${stats.running}</div>
-                <div style="color: #7d8590; font-size: 12px;">En cours</div>
-            </div>
-            <div style="background: rgba(154, 99, 212, 0.1); border: 1px solid rgba(154, 99, 212, 0.3); border-radius: 8px; padding: 16px; text-align: center;">
-                <div style="color: #9a63d4; font-size: 24px; font-weight: bold;">${currentAgents.length}</div>
-                <div style="color: #7d8590; font-size: 12px;">Agents</div>
-            </div>
-        </div>
-    `;
     
-    // Afficher agents
+    // Mettre à jour les statistiques dans le modal
+    document.getElementById('overview-success-count').textContent = stats.success;
+    document.getElementById('overview-failure-count').textContent = stats.failure;
+    document.getElementById('overview-running-count').textContent = stats.running;
+    document.getElementById('overview-agents-count').textContent = currentAgents.length;
+    
+    // Afficher les agents détaillés
+    const agents = document.getElementById('overview-agents');
     const limitedAgents = currentAgents.slice(0, 6);
     agents.innerHTML = limitedAgents.map(agent => `
         <div class="agent-card">
@@ -157,251 +142,166 @@ class SimpleDashboard {
     }
 
     async init() {
-        console.log('Dashboard initialisé');
-        
-        // ⚡ OPTIMISATION : Charger TOUT en PARALLÈLE pour plus de rapidité
-        console.log('🚀 Chargement parallèle des données...');
-        
         try {
-            // Charger configuration, builds et agents EN MÊME TEMPS
             const [configResponse, buildsResponse, agentsResponse] = await Promise.all([
                 fetch('http://localhost:8000/api/config'),
                 fetch('http://localhost:8000/api/builds'),
                 fetch('http://localhost:8000/api/agents')
             ]);
             
-            // Traiter les réponses
             const [configData, buildsData, agentsData] = await Promise.all([
                 configResponse.json(),
                 buildsResponse.json(),
                 agentsResponse.json()
             ]);
             
-            console.log('✅ Toutes les données chargées en parallèle !');
-            
-            // Traiter la configuration
             this.processConfiguration(configData);
-            
-            // Traiter les builds
             this.processBuilds(buildsData);
-            
-            // Traiter les agents
             this.processAgents(agentsData);
             
         } catch (error) {
-            console.error('❌ Erreur lors du chargement parallèle:', error);
-            // Fallback : chargement séquentiel en cas d'erreur
             await this.loadConfiguration();
             await this.loadAndDisplayBuilds();
             await this.loadAndDisplayAgents();
         }
         
-        // Démarrer le rafraîchissement automatique
         this.startAutoRefresh();
     }
 
     processConfiguration(data) {
-        console.log('=== CONFIGURATION DETAILLEE ===');
-        console.log('Données de configuration reçues:', data);
-        console.log('Structure builds:', data.config?.builds);
-        
-        // Extraire les builds sélectionnés depuis la structure de config
         const selectedBuilds = data.config?.builds?.selectedBuilds || data.selectedBuilds || [];
-        
-        console.log('=== BUILDS EXTRAITS ===');
-        console.log('Type de selectedBuilds:', typeof selectedBuilds);
-        console.log('Array.isArray(selectedBuilds):', Array.isArray(selectedBuilds));
-        console.log('selectedBuilds brut:', selectedBuilds);
-        
-        if (selectedBuilds.length > 0) {
-            this.selectedBuilds = selectedBuilds;
-            console.log('✅ Builds sélectionnés assignés:', this.selectedBuilds.length);
-            console.log('✅ Tous les builds sélectionnés:', this.selectedBuilds);
-            console.log('✅ Premier build sélectionné:', this.selectedBuilds[0]);
-            console.log('✅ Dernier build sélectionné:', this.selectedBuilds[this.selectedBuilds.length - 1]);
-        } else {
-            console.log('❌ Aucune configuration trouvée, chargement de tous les builds');
-            this.selectedBuilds = [];
-        }
+        this.selectedBuilds = selectedBuilds;
     }
 
     async loadConfiguration() {
         try {
-            // Récupérer la configuration depuis le backend
             const response = await fetch('http://localhost:8000/api/config');
             const data = await response.json();
             this.processConfiguration(data);
         } catch (error) {
-            console.error('❌ Erreur lors du chargement de la configuration:', error);
             this.selectedBuilds = [];
         }
     }
 
     processBuilds(data) {
         try {
-            // Extraire tous les builds de la structure arborescente
             this.allBuilds = this.extractAllBuildsFromTree(data);
             
-            // Filtrer selon les builds sélectionnés dans la configuration
             if (this.selectedBuilds && this.selectedBuilds.length > 0) {
                 this.allBuilds = this.allBuilds.filter(build => 
                     this.selectedBuilds.includes(build.buildTypeId)
                 );
-                console.log(`Builds filtrés: ${this.allBuilds.length}/${this.extractAllBuildsFromTree(data).length} (selon config)`);
             } else {
-                console.log('Aucun build sélectionné - dashboard vide');
                 this.allBuilds = [];
             }
             
             currentBuilds = this.allBuilds;
-            
-            // Organiser les builds par version automatiquement
             this.organizeAndDisplayBuilds();
-            
-            // Mettre à jour les statistiques
             this.updateStats();
             
         } catch (error) {
-            console.error('Erreur traitement builds:', error);
             this.displayError();
         }
     }
 
     async loadAndDisplayBuilds() {
         try {
-            // Utiliser l'endpoint builds qui contient TOUS les builds TeamCity
             const response = await fetch('http://localhost:8000/api/builds');
             const data = await response.json();
             this.processBuilds(data);
         } catch (error) {
-            console.error('Erreur chargement builds:', error);
             this.displayError();
         }
     }
 
     extractAllBuildsFromTree(data) {
-        // L'API /api/builds renvoie directement un tableau de builds
         const allBuilds = data.builds || [];
-        
-        console.log(`Builds extraits de l'API: ${allBuilds.length}`);
         return allBuilds;
     }
 
     organizeAndDisplayBuilds() {
-        console.log('=== DEBUT ORGANISATION ===');
-        console.log('Total builds chargés:', this.allBuilds.length);
-        console.log('Builds sélectionnés configurés:', this.selectedBuilds.length);
-        
-        // Filtrer selon la configuration des builds sélectionnés
         let filteredBuilds = this.allBuilds;
         if (this.selectedBuilds.length > 0) {
-            console.log('Premier build de l\'API:', this.allBuilds[0]?.buildTypeId);
-            console.log('Premier build sélectionné:', this.selectedBuilds[0]?.buildTypeId || this.selectedBuilds[0]?.name || this.selectedBuilds[0]);
-            
-            // DIAGNOSTIC COMPLET - Lister tous les builds de l'API
-            console.log('=== TOUS LES BUILDS DE L\'API ===');
-            const apiBuilds = this.allBuilds.map(b => b.buildTypeId);
-            apiBuilds.forEach((buildId, index) => {
-                console.log(`${(index + 1).toString().padStart(2, '0')}. ${buildId}`);
-            });
-            
-            // DIAGNOSTIC - Builds sélectionnés manquants
-            console.log('=== BUILDS SÉLECTIONNÉS MANQUANTS ===');
             const missingBuilds = this.selectedBuilds.filter(selectedBuildId => {
                 return !this.allBuilds.some(build => build.buildTypeId === selectedBuildId);
             });
-            console.log(`Builds manquants dans l'API: ${missingBuilds.length}/${this.selectedBuilds.length}`);
-            missingBuilds.forEach((buildId, index) => {
-                console.log(`❌ ${(index + 1).toString().padStart(2, '0')}. ${buildId}`);
-            });
             
-            // DÉCISION INTELLIGENTE : Si beaucoup de builds manquants, afficher tous les builds disponibles
             if (missingBuilds.length > this.selectedBuilds.length / 2) {
-                console.log('⚠️ Plus de 50% des builds sélectionnés sont manquants dans l\'API');
-                console.log('→ Affichage de TOUS les builds disponibles pour éviter un dashboard vide');
-                filteredBuilds = this.allBuilds; // Afficher tous les builds disponibles
+                filteredBuilds = this.allBuilds;
             } else {
-                // Filtrage normal si la plupart des builds sont disponibles
                 filteredBuilds = this.allBuilds.filter(build => {
-                    const found = this.selectedBuilds.some(selectedBuildId => {
-                        const match = build.buildTypeId === selectedBuildId;
-                        if (match) {
-                            console.log('✓ Build trouvé:', build.buildTypeId);
-                        }
-                        return match;
+                    return this.selectedBuilds.some(selectedBuildId => {
+                        return build.buildTypeId === selectedBuildId;
                     });
-                    return found;
                 });
             }
-            console.log(`Builds filtrés selon configuration: ${filteredBuilds.length}`);
-        } else {
-            console.log('Aucun filtre, affichage de tous les builds');
         }
 
-        // Si aucun build filtré, afficher tous les builds pour déboguer
         if (filteredBuilds.length === 0 && this.selectedBuilds.length > 0) {
-            console.log('⚠️ Aucun build filtré trouvé, affichage de tous pour débogage');
             filteredBuilds = this.allBuilds;
         }
 
-        // Organiser les builds par PROJET sélectionné, pas par version automatique
         const buildsByProject = this.organizeBySelectedProjects(filteredBuilds);
-        
-        // Afficher les projets dans les colonnes
         this.displayProjectsInColumns(buildsByProject);
         
-        // Mettre à jour les compteurs
         const totalFirst = Object.values(buildsByProject.first).reduce((sum, builds) => sum + builds.length, 0);
         const totalSecond = Object.values(buildsByProject.second).reduce((sum, builds) => sum + builds.length, 0);
-        this.updateColumnCounts([{length: totalFirst}], [{length: totalSecond}]);
+        const totalThird = Object.values(buildsByProject.third).reduce((sum, builds) => sum + builds.length, 0);
+        
+        const hasThirdColumn = totalThird > 0;
+        
+        this.updateColumnCounts([{length: totalFirst}], [{length: totalSecond}], hasThirdColumn ? [{length: totalThird}] : [{length: 0}]);
+        
+        if (!hasThirdColumn) {
+            this.hideThirdColumn();
+        }
     }
 
     organizeBySelectedProjects(builds) {
-        // Si aucun build sélectionné, n'afficher rien
         if (builds.length === 0) {
-            console.log('Aucun build sélectionné - dashboard vide');
             return {
                 first: {},
                 second: {},
+                third: {},
                 firstTitle: "Aucun projet sélectionné",
-                secondTitle: "Aucun projet sélectionné"
+                secondTitle: "Aucun projet sélectionné",
+                thirdTitle: "Aucun projet sélectionné"
             };
         }
 
-        // DÉTECTER LES VERSIONS AUTOMATIQUEMENT
-        console.log('=== DÉTECTION AUTOMATIQUE DES VERSIONS ===');
         const versions = this.detectVersions(builds);
-        console.log('Versions détectées:', versions);
-
-        // SÉPARER LES BUILDS PAR VERSION
         const firstVersion = versions[0] || "612";
         const secondVersion = versions[1] || "New";
+        const thirdVersion = versions[2] || "Autres";
         
-        const { buildsFirst, buildsSecond } = this.separateBuildsByVersion(builds, firstVersion, secondVersion);
-        
-        console.log(`Builds séparés: ${buildsFirst.length} (${firstVersion}) + ${buildsSecond.length} (${secondVersion})`);
+        const { buildsFirst, buildsSecond, buildsThird } = this.separateBuildsByVersion(builds, firstVersion, secondVersion, thirdVersion);
 
-        // ORGANISER PAR PROJET DANS CHAQUE VERSION
         const firstProjects = this.groupBuildsByProject(buildsFirst);
         const secondProjects = this.groupBuildsByProject(buildsSecond);
+        const thirdProjects = this.groupBuildsByProject(buildsThird);
 
+        let thirdTitle = `GO2 Version ${thirdVersion}`;
+        
+        if (thirdVersion === "WebServices") {
+            thirdTitle = "Web Services";
+        } else if (thirdVersion === "Autres" && buildsThird.length > 0) {
+            const sampleBuild = buildsThird[0];
+            if (sampleBuild.buildTypeId) {
+                const projectName = this.extractProjectFromBuildId(sampleBuild.buildTypeId);
+                if (projectName !== 'Autres') {
+                    thirdTitle = projectName;
+                }
+            }
+        }
+        
         const result = {
             first: firstProjects,
             second: secondProjects,
+            third: thirdProjects,
             firstTitle: `GO2 Version ${firstVersion}`,
-            secondTitle: `GO2 Version ${secondVersion}`
+            secondTitle: `GO2 Version ${secondVersion}`,
+            thirdTitle: thirdTitle
         };
-
-
-
-        console.log('Projets organisés (Système complet):', {
-            'Version 1': firstVersion,
-            'Version 2': secondVersion,
-            'Projets version 1': Object.keys(firstProjects),
-            'Projets version 2': Object.keys(secondProjects),
-            'Builds version 1': Object.values(result.first).reduce((sum, builds) => sum + builds.length, 0),
-            'Builds version 2': Object.values(result.second).reduce((sum, builds) => sum + builds.length, 0)
-        });
 
         return result;
     }
@@ -442,7 +342,21 @@ class SimpleDashboard {
             return 'GO2 Version New / Product Install / Dental';
         } else if (buildTypeId.includes('GO2camNew')) {
             return 'GO2 Version New / Product Compil / GO2cam';
-        } else if (buildTypeId.includes('WebServices') || buildTypeId.includes('GO2Portal')) {
+        } else if (buildTypeId.includes('WebServices') || buildTypeId.includes('GO2Portal') || buildTypeId.includes('Web')) {
+            // ORGANISER LES WEB SERVICES HIÉRARCHIQUEMENT
+            const parts = buildTypeId.split('_');
+            if (parts.length >= 2) {
+                const service = parts[1].replace(/([A-Z])/g, ' $1').trim(); // "GO2Portal", "GObot", etc.
+                return `Web Services / ${service}`;
+            }
+            return 'Web Services';
+        } else if (buildTypeId.includes('Portal') || buildTypeId.includes('API')) {
+            // ORGANISER LES LEGACY PORTAL HIÉRARCHIQUEMENT
+            const parts = buildTypeId.split('_');
+            if (parts.length >= 2) {
+                const service = parts[1].replace(/([A-Z])/g, ' $1').trim(); // "SynchroServers", etc.
+                return `Web Services / ${service}`;
+            }
             return 'Web Services';
         } else {
             return 'Autres';
@@ -450,22 +364,49 @@ class SimpleDashboard {
     }
 
     displayProjectsInColumns(buildsByProject) {
+        // Vérifier si la 3ème colonne a du contenu
+        const hasThirdColumn = Object.keys(buildsByProject.third).length > 0;
+        
         // Mettre à jour les en-têtes avec les vrais noms de projets
-        this.updateColumnHeaders(buildsByProject.firstTitle, buildsByProject.secondTitle);
+        this.updateColumnHeaders(buildsByProject.firstTitle, buildsByProject.secondTitle, hasThirdColumn ? buildsByProject.thirdTitle : null);
         
         // Afficher colonne 1 avec les projets groupés
         this.displayBuildsInColumn('builds-612', buildsByProject.first);
         
         // Afficher colonne 2 avec les projets groupés
         this.displayBuildsInColumn('builds-new', buildsByProject.second);
+        
+        // Afficher colonne 3 seulement si elle a du contenu
+        if (hasThirdColumn) {
+            this.displayBuildsInColumn('builds-project3', buildsByProject.third);
+            this.showThirdColumn();
+        } else {
+            this.hideThirdColumn();
+        }
     }
 
-    updateColumnHeaders(firstTitle = null, secondTitle = null) {
+    updateColumnHeaders(firstTitle = null, secondTitle = null, thirdTitle = null) {
         const title612 = document.getElementById('title-612');
         const titleNew = document.getElementById('title-new');
+        const titleProject3 = document.getElementById('title-project3');
         
         if (title612) title612.textContent = firstTitle || 'Aucun projet';
         if (titleNew) titleNew.textContent = secondTitle || 'Aucun projet';
+        if (titleProject3) titleProject3.textContent = thirdTitle || 'Aucun projet';
+    }
+
+    showThirdColumn() {
+        const dashboardGrid = document.querySelector('.dashboard-grid');
+        if (dashboardGrid) {
+            dashboardGrid.classList.add('has-third-column');
+        }
+    }
+
+    hideThirdColumn() {
+        const dashboardGrid = document.querySelector('.dashboard-grid');
+        if (dashboardGrid) {
+            dashboardGrid.classList.remove('has-third-column');
+        }
     }
 
     detectVersions(builds) {
@@ -489,81 +430,77 @@ class SimpleDashboard {
                         });
                     }
                 }
+                
+                // DÉTECTER LES WEB SERVICES
+                if (build.buildTypeId.includes('WebServices') || build.buildTypeId.includes('GO2Portal') || 
+                    build.buildTypeId.includes('Web') || build.buildTypeId.includes('Portal') || 
+                    build.buildTypeId.includes('API')) {
+                    versionCounts['WebServices'] = (versionCounts['WebServices'] || 0) + 1;
+                }
             }
         });
 
         // Trier par nombre d'occurrences (décroissant)
         return Object.keys(versionCounts)
             .sort((a, b) => versionCounts[b] - versionCounts[a])
-            .slice(0, 2); // Prendre les 2 plus fréquentes
+            .slice(0, 3); // Prendre les 3 plus fréquentes
     }
 
 
 
-    separateBuildsByVersion(builds, firstVersion, secondVersion) {
+    separateBuildsByVersion(builds, firstVersion, secondVersion, thirdVersion) {
         const buildsFirst = [];
         const buildsSecond = [];
-        
-        console.log(`=== SEPARATION DES BUILDS ===`);
-        console.log(`Version 1: "${firstVersion}", Version 2: "${secondVersion}"`);
+        const buildsThird = [];
         
         builds.forEach(build => {
             if (!build.buildTypeId) {
-                return; // Ignorer les builds sans buildTypeId
+                return;
             }
             
             const buildTypeId = build.buildTypeId;
             let assigned = false;
             
-            // Priorité à la première version (généralement la plus récente)
             if (this.matchesVersion(buildTypeId, firstVersion)) {
                 buildsFirst.push(build);
                 assigned = true;
-                console.log(`✓ "${buildTypeId}" → Colonne 1 (${firstVersion})`);
             } else if (this.matchesVersion(buildTypeId, secondVersion)) {
                 buildsSecond.push(build);
                 assigned = true;
-                console.log(`✓ "${buildTypeId}" → Colonne 2 (${secondVersion})`);
+            } else if (this.matchesVersion(buildTypeId, thirdVersion)) {
+                buildsThird.push(build);
+                assigned = true;
             }
             
-            // Si pas assigné et qu'on a des versions "Autres" ou "Tous"
             if (!assigned) {
-                if (secondVersion === "Autres") {
-                    buildsSecond.push(build);
-                    console.log(`✓ "${buildTypeId}" → Colonne 2 (Autres)`);
+                if (thirdVersion === "Autres") {
+                    buildsThird.push(build);
                 } else if (firstVersion === "Tous") {
                     buildsFirst.push(build);
-                    console.log(`✓ "${buildTypeId}" → Colonne 1 (Tous)`);
-                } else {
-                    console.log(`✗ "${buildTypeId}" → Non assigné`);
                 }
             }
         });
         
-        console.log(`Résultat: ${buildsFirst.length} builds en colonne 1, ${buildsSecond.length} builds en colonne 2`);
-        return { buildsFirst, buildsSecond };
+        return { buildsFirst, buildsSecond, buildsThird };
     }
 
     matchesVersion(buildTypeId, version) {
         if (version === "Aucun") return false;
         if (version === "Tous") return true;
-        if (version === "Autres") return false; // Géré séparément
+        if (version === "Autres") return false;
         
         let result = false;
         
-        // Recherche plus précise pour éviter les faux positifs
         if (version.match(/^\d{3,4}$/)) {
-            // Pour les versions numériques (612, 613, etc.)
             result = buildTypeId.includes(version);
-            console.log(`  Test numérique "${buildTypeId}" contains "${version}": ${result}`);
         } else if (version.toLowerCase() === "new") {
-            // Pour la version "New"
             result = buildTypeId.toLowerCase().includes("new");
-            console.log(`  Test NEW "${buildTypeId}" contains "new": ${result}`);
+        } else if (version === "WebServices") {
+            result = buildTypeId.includes('WebServices') || buildTypeId.includes('GO2Portal') || 
+                     buildTypeId.includes('Web') || buildTypeId.includes('Portal') || 
+                     buildTypeId.includes('API');
         } else {
-            // Pour les autres patterns
             result = buildTypeId.includes(version);
-            console.log(`  Test autre "${buildTypeId}" contains "${version}": ${result}`);
         }
         
         return result;
@@ -643,28 +580,30 @@ class SimpleDashboard {
         // UTILISER LE VRAI NOM DU BUILD
         let buildName = build.name || build.buildTypeId || 'Build';
         
-        // Ajouter un indicateur visuel pour les builds en cours
-        const runningIndicator = (build.state?.toLowerCase() === 'running' || build.state?.toLowerCase() === 'building') 
-            ? '<div class="running-indicator">▶</div>' 
-            : '';
-        
         return `
             <div class="build-item ${statusClass}" onclick="window.open('${build.webUrl}', '_blank')">
                 <div class="build-name">${buildName}</div>
-                ${runningIndicator}
             </div>
         `;
     }
 
-    updateColumnCounts(builds612, buildsNew) {
+    updateColumnCounts(builds612, buildsNew, buildsProject3) {
         const count612 = document.getElementById('count-612');
         const countNew = document.getElementById('count-new');
+        const countProject3 = document.getElementById('count-project3');
         
         const count1 = Array.isArray(builds612) ? builds612.length : (builds612[0]?.length || 0);
         const count2 = Array.isArray(buildsNew) ? buildsNew.length : (buildsNew[0]?.length || 0);
+        const count3 = Array.isArray(buildsProject3) ? buildsProject3.length : (buildsProject3[0]?.length || 0);
         
         if (count612) count612.textContent = count1;
         if (countNew) countNew.textContent = count2;
+        if (countProject3) countProject3.textContent = count3;
+        
+        // Masquer le compteur de la colonne 3 si pas de builds
+        if (countProject3) {
+            countProject3.style.display = count3 > 0 ? 'block' : 'none';
+        }
     }
 
     displayError() {
@@ -673,14 +612,15 @@ class SimpleDashboard {
         
         if (builds612) builds612.innerHTML = '<div class="loading">Erreur de chargement</div>';
         if (buildsNew) buildsNew.innerHTML = '<div class="loading">Erreur de chargement</div>';
+        
+        // Masquer la colonne 3 en cas d'erreur
+        this.hideThirdColumn();
     }
 
     processAgents(data) {
         try {
             currentAgents = data.agents || [];
-            console.log(`✅ Agents traités: ${currentAgents.length} agents`);
         } catch (error) {
-            console.error('Erreur traitement agents:', error);
             currentAgents = [];
         }
     }
@@ -697,17 +637,20 @@ class SimpleDashboard {
     }
 
     startAutoRefresh() {
-        // ⚡ OPTIMISATION : Rafraîchissement parallèle toutes les 60 secondes
+        // ⚡ OPTIMISATION : Rafraîchissement parallèle toutes les 120 secondes
         setInterval(async () => {
             try {
-                console.log('🔄 Rafraîchissement automatique en cours...');
+                // Charger TOUT en parallèle avec timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
                 
-                // Charger TOUT en parallèle
                 const [configResponse, buildsResponse, agentsResponse] = await Promise.all([
-                    fetch('http://localhost:8000/api/config'),
-                    fetch('http://localhost:8000/api/builds'),
-                    fetch('http://localhost:8000/api/agents')
+                    fetch('http://localhost:8000/api/config', { signal: controller.signal }),
+                    fetch('http://localhost:8000/api/builds', { signal: controller.signal }),
+                    fetch('http://localhost:8000/api/agents', { signal: controller.signal })
                 ]);
+                
+                clearTimeout(timeoutId);
                 
                 const [configData, buildsData, agentsData] = await Promise.all([
                     configResponse.json(),
@@ -720,16 +663,17 @@ class SimpleDashboard {
                 this.processBuilds(buildsData);
                 this.processAgents(agentsData);
                 
-                console.log('✅ Rafraîchissement terminé !');
-                
             } catch (error) {
-                console.error('❌ Erreur rafraîchissement:', error);
-                // Fallback séquentiel
-                await this.loadConfiguration();
-                await this.loadAndDisplayBuilds();
-                this.loadAndDisplayAgents();
+                // Fallback séquentiel silencieux
+                try {
+                    await this.loadConfiguration();
+                    await this.loadAndDisplayBuilds();
+                    this.loadAndDisplayAgents();
+                } catch (fallbackError) {
+                    // Ignorer les erreurs de fallback
+                }
             }
-        }, 60000);
+        }, 120000); // 2 minutes
     }
 
     startStatsMonitoring() {
@@ -741,11 +685,46 @@ class SimpleDashboard {
     updateStats() {
         const stats = this.getDetailedStats();
         
-        document.getElementById('success-count').textContent = stats.success;
-        document.getElementById('failure-count').textContent = stats.failure;
-        document.getElementById('running-count').textContent = stats.running;
-        document.getElementById('agents-count').textContent = currentAgents.length;
-        document.getElementById('total-count').textContent = `${this.allBuilds.length}/${this.allBuilds.length}`;
+        document.getElementById('navbar-success-count').textContent = stats.success;
+        document.getElementById('navbar-failure-count').textContent = stats.failure;
+        document.getElementById('navbar-running-count').textContent = stats.running;
+        document.getElementById('navbar-agents-count').textContent = currentAgents.length;
+        
+        this.updateAgentIndicators();
+    }
+
+    updateAgentIndicators() {
+        const indicatorsContainer = document.getElementById('agent-indicators');
+        if (!indicatorsContainer) return;
+        
+        // Vider les indicateurs existants
+        indicatorsContainer.innerHTML = '';
+        
+        // Générer un point voyant pour chaque agent
+        currentAgents.forEach(agent => {
+            const indicator = document.createElement('div');
+            indicator.className = `agent-indicator ${agent.status}`;
+            indicator.setAttribute('data-agent-name', agent.name);
+            indicator.title = `${agent.name} - ${this.getAgentStatusText(agent.status)}`;
+            
+            // Ajouter un événement de clic pour afficher les détails
+            indicator.onclick = () => this.showAgentDetails(agent);
+            
+            indicatorsContainer.appendChild(indicator);
+        });
+    }
+
+    getAgentStatusText(status) {
+        switch (status) {
+            case 'online': return 'En ligne';
+            case 'offline': return 'Hors ligne';
+            case 'busy': return 'Occupé';
+            default: return 'Inconnu';
+        }
+    }
+
+    showAgentDetails(agent) {
+        // TODO: Implémenter une modal pour les détails de l'agent
     }
 
     getDetailedStats() {

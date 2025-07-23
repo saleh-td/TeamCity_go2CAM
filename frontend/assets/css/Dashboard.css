@@ -68,10 +68,178 @@ body {
 .header-stats {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     font-size: 14px;
 }
 
+/* === CARTES STATISTIQUES NAVBAR === */
+.navbar-stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 60px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.navbar-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.navbar-stat-card:hover::before {
+    left: 100%;
+}
+
+.navbar-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.navbar-stat-card.success {
+    background: linear-gradient(135deg, #3fb950, #2ea043);
+}
+
+.navbar-stat-card.failure {
+    background: linear-gradient(135deg, #f85149, #da3633);
+}
+
+.navbar-stat-card.running {
+    background: linear-gradient(135deg, #f0883e, #d29922);
+}
+
+.navbar-stat-card.agents {
+    background: linear-gradient(135deg, #9a63d4, #7c3aed);
+}
+
+.navbar-stat-number {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1;
+    margin-bottom: 2px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.navbar-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+}
+
+/* === POINTS VOYANTS AGENTS === */
+.agent-indicators {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: 16px;
+    padding: 8px 12px;
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.3);
+    border-radius: 8px;
+}
+
+.agent-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.agent-indicator:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 8px currentColor;
+}
+
+.agent-indicator.online {
+    background: #3fb950;
+    box-shadow: 0 0 4px rgba(63, 185, 80, 0.4);
+}
+
+.agent-indicator.offline {
+    background: #f85149;
+    box-shadow: 0 0 4px rgba(248, 81, 73, 0.4);
+}
+
+.agent-indicator.busy {
+    background: #ffa657;
+    box-shadow: 0 0 4px rgba(255, 166, 87, 0.4);
+    animation: agentPulse 2s infinite;
+}
+
+.agent-indicator.unknown {
+    background: #7d8590;
+    box-shadow: 0 0 4px rgba(125, 133, 144, 0.4);
+}
+
+@keyframes agentPulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(87, 242, 135, 0.7);
+    }
+    50% {
+        transform: scale(1.3);
+        opacity: 0.8;
+        box-shadow: 0 0 0 8px rgba(87, 242, 135, 0);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(87, 242, 135, 0);
+    }
+}
+
+@keyframes agentGlow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(87, 242, 135, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(87, 242, 135, 0.8), 0 0 25px rgba(87, 242, 135, 0.4);
+    }
+}
+
+.agent-indicator::after {
+    content: attr(data-agent-name);
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(22, 27, 34, 0.9);
+    color: #f0f6fc;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 1000;
+}
+
+.agent-indicator:hover::after {
+    opacity: 1;
+}
+
+/* Ancien style pour compatibilité */
 .stat-item {
     display: flex;
     align-items: center;
@@ -124,6 +292,21 @@ body {
     gap: 20px;
     height: calc(100vh - 140px);
     padding: 0;
+}
+
+/* Colonne 3 cachée par défaut */
+.dashboard-grid.has-third-column {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* Masquer la colonne 3 par défaut */
+.zone-project3 {
+    display: none;
+}
+
+/* Afficher la colonne 3 quand nécessaire */
+.dashboard-grid.has-third-column .zone-project3 {
+    display: flex;
 }
 
 /* === COLONNES === */
@@ -451,6 +634,69 @@ body {
 }
 
 /* === AGENTS === */
+/* === STATISTIQUES MODAL OVERVIEW === */
+.overview-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.overview-stats .stat-card.agents {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.stat-card {
+    background: rgba(33, 39, 46, 0.8);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.stat-card.success {
+    background: linear-gradient(135deg, #3fb950, #2ea043);
+    border-color: #3fb950;
+}
+
+.stat-card.failure {
+    background: linear-gradient(135deg, #f85149, #da3633);
+    border-color: #f85149;
+}
+
+.stat-card.running {
+    background: linear-gradient(135deg, #f0883e, #d29922);
+    border-color: #f0883e;
+}
+
+.stat-card.agents {
+    background: linear-gradient(135deg, #9a63d4, #7c3aed);
+    border-color: #9a63d4;
+}
+
+.stat-number {
+    font-size: 32px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.stat-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 .agents-section {
     margin-top: 24px;
     padding-top: 20px;
@@ -532,7 +778,7 @@ body {
 
 /* === TITRES DES ZONES PRINCIPALES (GO2 Version 612, GO2 Version New) === */
 /* MODIFIER ICI : font-size pour changer la taille des titres principaux */
-#title-612, #title-new {
+#title-612, #title-new, #title-project3 {
     font-size: 28px !important; /* TAILLE DES TITRES PRINCIPAUX - MODIFIER ICI */
     font-weight: 700 !important;
     color: #f0f6fc !important;
@@ -703,28 +949,49 @@ body {
 
 .build-item.running {
     background: transparent;
-    border: 2px solid #ffa657;
-    animation: buildPulse 2s infinite;
+    border: 2px solid #3fb950;
+    position: relative;
+    overflow: hidden;
+}
+
+.build-item.running::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(87, 242, 135, 0.4), transparent);
+    animation: buildProgressAnimation 1.5s infinite ease-in-out;
+    z-index: 1;
+}
+
+.build-item.running::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, transparent 30%, rgba(87, 242, 135, 0.1) 50%, transparent 70%);
+    animation: buildShimmerAnimation 2s infinite ease-in-out;
+    z-index: 2;
+}
+
+@keyframes buildProgressAnimation {
+    0% { left: -100%; }
+    50% { left: 0%; }
+    100% { left: 100%; }
+}
+
+@keyframes buildShimmerAnimation {
+    0% { transform: translateX(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) rotate(45deg); }
 }
 
 .build-item.unknown {
     background: transparent;
     border: 2px solid #58a6ff;
-}
-
-@keyframes buildPulse {
-    0% { 
-        border-color: #ffa657;
-        box-shadow: 0 0 0 0 rgba(255, 166, 87, 0.4);
-    }
-    50% { 
-        border-color: #ffb366;
-        box-shadow: 0 0 0 3px rgba(255, 166, 87, 0.1);
-    }
-    100% { 
-        border-color: #ffa657;
-        box-shadow: 0 0 0 0 rgba(255, 166, 87, 0);
-    }
 }
 
 .build-name {
@@ -788,6 +1055,31 @@ body {
     .header-stats {
         flex-wrap: wrap;
         justify-content: center;
+        gap: 8px;
+    }
+
+    .navbar-stat-card {
+        min-width: 50px;
+        padding: 6px 8px;
+    }
+
+    .navbar-stat-number {
+        font-size: 16px;
+    }
+
+    .navbar-stat-label {
+        font-size: 9px;
+    }
+    
+    .agent-indicators {
+        margin-left: 8px;
+        padding: 6px 8px;
+        gap: 4px;
+    }
+    
+    .agent-indicator {
+        width: 10px;
+        height: 10px;
     }
     
     .builds-grid {
