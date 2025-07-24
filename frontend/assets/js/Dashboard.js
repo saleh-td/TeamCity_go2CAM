@@ -744,7 +744,7 @@ class SimpleDashboard {
     getStatusClass(status, state) {
         // Vérifier si des builds sont en cours
         if (state?.toLowerCase() === 'running' || state?.toLowerCase() === 'building') {
-            console.log(`🔥 ANIMATION ! Build EN COURS: status="${status}", state="${state}"`);
+            // Build en cours détecté
             return 'running';
         }
         

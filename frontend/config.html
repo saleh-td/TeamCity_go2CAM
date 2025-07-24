@@ -29,6 +29,50 @@
         <div class="config-header">
             <h1>
                 <i data-lucide="git-branch" style="width: 24px; height: 24px; color: #ffa657;"></i>
+                Configuration des Colonnes
+            </h1>
+            <p>Configurez les titres des colonnes du dashboard</p>
+        </div>
+
+        <div class="parameters-form">
+            <form id="parametersForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="nameFirstColumn">Première colonne :</label>
+                        <select id="nameFirstColumn" name="nameFirstColumn" required>
+                            <option value="">Sélectionnez un projet</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="nameSecondColumn">Deuxième colonne :</label>
+                        <select id="nameSecondColumn" name="nameSecondColumn" required>
+                            <option value="">Sélectionnez un projet</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="nameThirdColumn">Troisième colonne :</label>
+                        <select id="nameThirdColumn" name="nameThirdColumn">
+                            <option value="">Sélectionnez un projet</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="save-btn">
+                        <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+                        Sauvegarder les paramètres
+                    </button>
+                    <button type="button" class="control-btn" onclick="resetParameters()">
+                        <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                        Valeurs par défaut
+                    </button>
+                </div>
+            </form>
+            <div id="parametersStatus" class="status-message"></div>
+        </div>
+
+        <div class="config-header">
+            <h1>
+                <i data-lucide="git-branch" style="width: 24px; height: 24px; color: #ffa657;"></i>
                 Sélection des Builds
             </h1>
             <p>Sélectionnez les builds à afficher dans le dashboard (reproduction de l'arborescence TeamCity)</p>

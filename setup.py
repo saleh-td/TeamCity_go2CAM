@@ -5,11 +5,11 @@ setup(
     version="1.0.0",
     packages=find_packages(),
     install_requires=[
-        "streamlit",
         "fastapi",
+        "uvicorn[standard]",
         "requests",
         "python-dotenv",
-        "pydantic"
+        "pymysql"
     ],
     python_requires=">=3.8",
 ) 

@@ -403,6 +403,96 @@ function updateBuildsSummary() {
     if (totalElement) {
         totalElement.textContent = totalBuilds;
     }
+    
+    // Mettre à jour les noms des colonnes selon les projets sélectionnés
+    updateColumnNames();
+}
+
+function updateColumnNames() {
+    // Remplir les menus déroulants avec les projets disponibles
+    populateProjectDropdowns();
+}
+
+function populateProjectDropdowns() {
+    const availableProjects = getAvailableProjects();
+    
+    // Remplir les 3 menus déroulants
+    const selects = ['nameFirstColumn', 'nameSecondColumn', 'nameThirdColumn'];
+    
+    selects.forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (select) {
+            // Garder l'option par défaut
+            const defaultOption = select.querySelector('option[value=""]');
+            select.innerHTML = '';
+            if (defaultOption) {
+                select.appendChild(defaultOption);
+            }
+            
+            // Ajouter les projets disponibles
+            availableProjects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project;
+                option.textContent = project;
+                select.appendChild(option);
+            });
+        }
+    });
+}
+
+function getAvailableProjects() {
+    const projects = [];
+    
+    if (buildsTree && buildsTree.projects) {
+        Object.keys(buildsTree.projects).forEach(projectName => {
+            if (projectName && projectName !== '<Root project>' && projectName !== 'Root project') {
+                projects.push(projectName);
+            }
+        });
+    }
+    
+    return projects.sort();
+}
+
+function getSelectedProjects() {
+    const projects = [];
+    
+    // Analyser les builds sélectionnés pour détecter les projets
+    if (selectedBuilds && selectedBuilds.length > 0) {
+        const projectMap = new Map();
+        
+        selectedBuilds.forEach(buildId => {
+            // Extraire le vrai nom du projet depuis buildId
+            // Ex: "Go2Version612_..." -> "GO2 Version 612"
+            const parts = buildId.split('_');
+            if (parts.length > 0) {
+                let projectName = parts[0];
+                
+                // Mapping correct des noms de projets
+                if (projectName.includes('Go2Version612')) {
+                    projectName = 'GO2 Version 612';
+                } else if (projectName.includes('Go2VersionNew') || projectName.includes('InstalleursNew')) {
+                    projectName = 'GO2 Version New';
+                } else if (projectName.includes('WebServices')) {
+                    projectName = 'Web Services';
+                } else {
+                    // Pour les autres projets, utiliser le nom original
+                    projectName = projectName.replace(/([A-Z])/g, ' $1').trim();
+                    projectName = projectName.replace(/^Go2/, 'GO2');
+                }
+                
+                if (!projectMap.has(projectName)) {
+                    projectMap.set(projectName, projectName);
+                }
+            }
+        });
+        
+        // Convertir en tableau et trier
+        projects.push(...Array.from(projectMap.values()).sort());
+    }
+    
+    console.log('Projets détectés:', projects);
+    return projects;
 }
 
 // === SAUVEGARDE MANUELLE ===
