@@ -142,8 +142,42 @@
 
 .controls-right {
     display: flex;
-    gap: 24px;
     align-items: center;
+    gap: 16px;
+}
+
+.search-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(48, 54, 61, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px 8px 36px;
+    color: #f0f6fc;
+    font-size: 14px;
+    width: 250px;
+    transition: all 0.3s ease;
+}
+
+.search-input::placeholder {
+    color: #7d8590;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #58a6ff;
+    background: rgba(88, 166, 255, 0.05);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+.search-container i {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
 }
 
 .save-btn {

@@ -16,19 +16,14 @@ function goBackToDashboard() {
 
 async function loadBuildsTree() {
     try {
-        const response = await fetch('/api/builds/tree');
+        const response = await fetch('http://localhost:8000/api/builds/tree');
         if (response.ok) {
             const result = await response.json();
             buildsTree = result;
             selectedBuilds = result.selected_builds || [];
             
-            const filteredProjects = {};
-            Object.keys(buildsTree.projects || {}).forEach(projectName => {
-                if (projectName && projectName !== '<Root project>' && projectName !== 'Root project') {
-                    filteredProjects[projectName] = buildsTree.projects[projectName];
-                }
-            });
-            buildsTree.projects = filteredProjects;
+            // Ne pas filtrer <Root project> car maintenant on a la hiérarchie complète
+            console.log('Arborescence chargée:', buildsTree);
             
             expandedNodes.clear();
             
@@ -162,7 +157,7 @@ function renderProjectsHTML(projects) {
                     <i data-lucide="folder" class="tree-folder-icon" style="color: #3fb950;"></i>
                     <div class="tree-project-checkbox ${checkboxState}" 
                          onclick="event.stopPropagation(); toggleProjectSelection('${projectName}')"></div>
-                    <span class="tree-project-name">${project.name}</span>
+                    <span class="tree-project-name">${projectName}</span>
                 </div>
                 <div class="tree-project-content ${isExpanded ? 'expanded' : ''}">
                     ${renderSubprojectsHTML(project.subprojects || {}, projectName)}
@@ -203,12 +198,13 @@ function renderBuildsHTML(builds) {
     return builds.map(build => {
         const isSelected = selectedBuilds.includes(build.buildTypeId);
         const statusClass = getBuildStatus(build);
+        const buildName = build.name || build.buildTypeId || 'Build sans nom';
         
         return `
             <div class="tree-build" onclick="toggleBuildSelection('${build.buildTypeId}')">
                 <i data-lucide="diamond" class="tree-build-icon" style="color: #3fb950;"></i>
                 <div class="tree-build-checkbox ${isSelected ? 'checked' : ''}"></div>
-                <span class="tree-build-name">${build.name}</span>
+                <span class="tree-build-name">${buildName}</span>
                 <div class="tree-build-status ${statusClass}"></div>
             </div>
         `;

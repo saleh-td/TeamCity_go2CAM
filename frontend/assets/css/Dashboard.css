@@ -294,19 +294,27 @@ body {
     padding: 0;
 }
 
-/* Colonne 3 cachée par défaut */
+/* Layouts adaptatifs selon le nombre de colonnes */
+.dashboard-grid.one-column {
+    grid-template-columns: 1fr;
+}
+
+.dashboard-grid.two-columns {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* Colonne 3 avec contenu */
 .dashboard-grid.has-third-column {
     grid-template-columns: 1fr 1fr 1fr;
 }
 
-/* Masquer la colonne 3 par défaut */
-.zone-project3 {
-    display: none;
+/* Gestion dynamique des zones masquées */
+.build-zone {
+    display: flex; /* Affichage par défaut */
 }
 
-/* Afficher la colonne 3 quand nécessaire */
-.dashboard-grid.has-third-column .zone-project3 {
-    display: flex;
+.build-zone[style*="display: none"] {
+    display: none !important;
 }
 
 /* === COLONNES === */

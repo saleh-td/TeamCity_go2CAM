@@ -52,52 +52,14 @@
 
     <div class="modern-dashboard">
         <div class="dashboard-layout">
-            <!-- Zone principale des builds -->
-            <div class="dashboard-grid">
-                <!-- Zone 612 -->
-                <div class="build-zone zone-612">
-                    <div class="zone-header">
-                        <div class="zone-title">
-                            <!-- TAILLE DES ICÔNES PRINCIPALES - MODIFIER ICI -->
-                            <i data-lucide="database" class="zone-icon" style="color: #58a6ff; width: 22px; height: 22px;"></i>
-                            <span id="title-612">612</span>
-                        </div>
-                        <div class="zone-badge" id="count-612">0</div>
-                    </div>
-                    <div class="builds-grid" id="builds-612">
-                        <div class="loading">Chargement...</div>
-                    </div>
+            <!-- Zone principale des builds - GÉNÉRATION DYNAMIQUE -->
+            <div class="dashboard-grid" id="dashboard-grid">
+                <!-- Les colonnes seront générées dynamiquement par JavaScript -->
+                <div class="loading-message">
+                    <i data-lucide="loader-2" style="animation: spin 2s linear infinite;"></i>
+                    Chargement automatique des projets TeamCity...
                 </div>
-
-                <!-- Zone New -->
-                <div class="build-zone zone-new">
-                    <div class="zone-header">
-                        <div class="zone-title">
-                            <!-- TAILLE DES ICÔNES PRINCIPALES - MODIFIER ICI -->
-                            <i data-lucide="sparkles" class="zone-icon" style="color: #57f287; width: 22px; height: 22px;"></i>
-                            <span id="title-new">New</span>
-                        </div>
-                        <div class="zone-badge" id="count-new">0</div>
-                    </div>
-                    <div class="builds-grid" id="builds-new">
-                        <div class="loading">Chargement...</div>
-                    </div>
-                </div>
-
-                <!-- Zone Projet 3 -->
-                <div class="build-zone zone-project3">
-                    <div class="zone-header">
-                        <div class="zone-title">
-                            <!-- TAILLE DES ICÔNES PRINCIPALES - MODIFIER ICI -->
-                            <i data-lucide="git-branch" class="zone-icon" style="color: #f59e0b; width: 22px; height: 22px;"></i>
-                            <span id="title-project3">Projet 3</span>
-                        </div>
-                        <div class="zone-badge" id="count-project3">0</div>
-                    </div>
-                    <div class="builds-grid" id="builds-project3">
-                        <div class="loading">Chargement...</div>
-                    </div>
-                </div>
+            </div>
             </div>
         </div>
     </div>
@@ -214,7 +176,9 @@
 
     </div>
 
-            <script src="assets/js/Dashboard.js?v=19"></script>
+            <!-- Configuration API centralisée -->
+            <script src="assets/js/ApiConfig.js"></script>
+            <script src="assets/js/Dashboard.js?v=20"></script>
     <script>
         // Initialiser Lucide Icons
         lucide.createIcons();

@@ -1,4 +1,4 @@
-# Python
+# Python - Cache et builds
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,6 +13,19 @@ eggs/
 lib/
 lib64/
 parts/
+
+# Base de données locale
+cache.db
+*.db
+*.sqlite3
+
+# Fichiers de configuration sensibles
+.env
+config/*.json
+
+# Scripts de migration temporaires
+init_*.py
+migrate_*.py
 sdist/
 var/
 wheels/

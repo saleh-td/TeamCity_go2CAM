@@ -1,3 +1,3 @@
-from . import builds
+from . import builds, agents
 
-__all__ = ['builds'] 
+__all__ = ['builds', 'agents'] 

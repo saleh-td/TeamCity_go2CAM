@@ -1,3 +1,3 @@
-from . import build_service
+# Services modernes - plus de config_service obsolète
 
-__all__ = ['build_service'] 
+__all__ = [] 

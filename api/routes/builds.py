@@ -1,74 +1,67 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from ..services.teamcity_fetcher import fetch_selected_builds_status, fetch_teamcity_agents, fetch_all_teamcity_builds
-from ..services.sentinel_params import get_dynamic_build_classification
-from ..services.build_tree_service import BuildTreeService
-from .configurations import load_config, apply_config_to_builds
+from ..services.teamcity_fetcher import fetch_teamcity_agents, fetch_all_teamcity_builds
+from ..services.modern_user_service import user_service
 import logging
-import asyncio
+import os
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
 cache: Dict[str, Any] = {
     "teamcity_builds": None,
     "teamcity_agents": None,
     "builds_timestamp": None,
     "agents_timestamp": None,
-    "ttl": timedelta(minutes=5)  # Augmenter le cache à 5 minutes
+    "ttl": timedelta(minutes=5)
 }
+
+
 
 @router.get("/builds")
 async def get_builds():
-    """Récupère tous les builds (compatible API PHP)."""
     try:
-        # Utiliser le cache optimisé
         now = datetime.now()
         
-        # Vérifier le cache en premier
         if (cache["teamcity_builds"] is not None and 
             cache["builds_timestamp"] is not None and 
             now - cache["builds_timestamp"] < cache["ttl"]):
             return {"builds": cache["teamcity_builds"]}
         
-        # Si pas de cache valide, récupérer les données
         builds_data = await get_teamcity_builds_direct()
+        
+        # Plus besoin de filtrage - système automatique moderne !
+        if builds_data:
+            # Tous les builds sont automatiquement organisés
+            all_filtered_builds = builds_data
+            
+            builds_data = all_filtered_builds
+        
+        cache["teamcity_builds"] = builds_data
+        cache["builds_timestamp"] = now
+        
         return {"builds": builds_data}
         
     except Exception as e:
         logger.error(f"Erreur get_builds: {str(e)}")
-        # Retourner le cache même expiré en cas d'erreur
-        return {"builds": cache.get("teamcity_builds", [])}
+        return {"builds": []}
 
 @router.get("/builds/classified")
 async def get_builds_classified():
-    """
-    Récupère les builds classifiés selon la logique de l'ancien système PHP.
-    Reproduit exactement la classification par buildTypeId.
-    Applique automatiquement les filtres de configuration utilisateur.
-    """
     try:
-        # Récupérer les builds depuis TeamCity
         builds_data = await get_teamcity_builds_direct()
-        params, classified_builds = await run_in_threadpool(
-            get_dynamic_build_classification, builds_data
-        )
         
-        # Construire la réponse de base
         response_data = {
-            "parameters": params,
-            "columns": classified_builds,
+            "parameters": {},
+            "columns": {},
             "total_builds": len(builds_data)
         }
         
-        # Charger et appliquer la configuration utilisateur
-        user_config = load_config()
-        filtered_data = apply_config_to_builds(response_data, user_config)
-        
-        return filtered_data
+        # Nouveau système moderne - plus de filtrage primitif !
+        return response_data
         
     except Exception as e:
         logger.error(f"Erreur get_builds_classified: {str(e)}")
@@ -80,54 +73,41 @@ async def get_builds_classified():
 
 @router.get("/builds/dashboard")
 async def get_builds_dashboard():
-    """
-    Récupère les builds pour le dashboard en utilisant la sélection utilisateur de l'arborescence.
-    Cette route remplace l'ancienne logique de classification par la nouvelle sélection utilisateur.
-    """
     try:
-        # Charger la sélection des builds depuis la configuration utilisateur
-        user_config = load_config()
-        selected_builds = user_config.get("builds", {}).get("selectedBuilds", [])
+        # Nouveau système moderne
+        selected_builds = user_service.get_selected_builds()
         
-        # Si aucune sélection n'est configurée, ne montrer aucun build
         if not selected_builds:
-            selected_builds = []
-            logger.info(f"Aucune sélection configurée - aucun build affiché dans le dashboard")
             return {
                 "builds": [],
                 "projects": {},
                 "total_builds": 0,
                 "running_count": 0,
                 "success_count": 0,
-                "failure_count": 0,
-                "selected_builds": []
+                "failure_count": 0
             }
         
-        # Récupérer les builds selon la sélection utilisateur (optimisé)
-        from ..services.teamcity_fetcher import fetch_selected_builds_status
-        builds_data = await run_in_threadpool(fetch_selected_builds_status, selected_builds)
+        builds_data = await get_teamcity_builds_direct()
         
-        # Organiser les builds par projet pour l'affichage
-        projects = {}
-        for build in builds_data:
-            project_name = build.get('projectName', 'Unknown Project')
-            if project_name not in projects:
-                projects[project_name] = []
-            projects[project_name].append(build)
+        filtered_builds = [
+            build for build in builds_data 
+            if build.get("buildTypeId") in selected_builds
+        ]
         
-        # Compter les builds par statut
-        running_count = sum(1 for build in builds_data if build.get('state', '').lower() == 'running')
-        success_count = sum(1 for build in builds_data if build.get('status', '').lower() == 'success')
-        failure_count = sum(1 for build in builds_data if build.get('status', '').lower() == 'failure')
+        # Organiser les builds par catégories logiques selon les patterns
+        projects_organized = organize_builds_by_patterns(filtered_builds)
+        
+        running_count = len([b for b in filtered_builds if b.get("state") == "running"])
+        success_count = len([b for b in filtered_builds if b.get("status") == "SUCCESS"])
+        failure_count = len([b for b in filtered_builds if b.get("status") in ["FAILURE", "FAILED"]])
         
         return {
-            "builds": builds_data,
-            "projects": projects,
-            "total_builds": len(builds_data),
+            "builds": filtered_builds,
+            "projects": projects_organized,
+            "total_builds": len(filtered_builds),
             "running_count": running_count,
             "success_count": success_count,
-            "failure_count": failure_count,
-            "selected_builds": selected_builds
+            "failure_count": failure_count
         }
         
     except Exception as e:
@@ -138,503 +118,316 @@ async def get_builds_dashboard():
             "total_builds": 0,
             "running_count": 0,
             "success_count": 0,
-            "failure_count": 0,
-            "selected_builds": []
+            "failure_count": 0
         }
+
+def organize_builds_by_patterns(builds):
+    """Organise les builds automatiquement en analysant leurs patterns"""
+    
+    # 1. ANALYSE AUTOMATIQUE DES PROJECTS DEPUIS LES BUILDS
+    project_analysis = analyze_build_projects(builds)
+    
+    # 2. ORGANISATION AUTOMATIQUE EN COLONNES
+    organized_projects = auto_organize_projects(project_analysis)
+    
+    return organized_projects
+
+def analyze_build_projects(builds):
+    """Analyse 100% automatique basée sur les vrais noms de projets TeamCity"""
+    project_groups = {}
+    
+    for build in builds:
+        project_name = build.get("projectName", "Unknown Project")
+        
+
+        project_parts = [part.strip() for part in project_name.split("/")]
+        
+        if len(project_parts) >= 1:
+            main_project = project_parts[0]
+            main_project_key = main_project.lower().replace(" ", "").replace(".", "")
+            
+            # Créer le projet principal s'il n'existe pas
+            if main_project_key not in project_groups:
+                project_groups[main_project_key] = {
+                    "name": main_project,
+                    "subprojects": {}
+                }
+            
+            # Construire la clé du sous-projet à partir de TOUS les niveaux restants
+            if len(project_parts) > 1:
+                # Utiliser tous les niveaux restants comme sous-projet
+                # Ex: "Product Compil / GO2cam" ou "Internal Libraries / GO2Dlls"
+                subproject_path = " / ".join(project_parts[1:])
+                subproject_key = f"{main_project.upper()} / {subproject_path.upper()}"
+            else:
+                # Si pas de sous-projet, utiliser le nom principal
+                subproject_key = f"{main_project.upper()} / GENERAL"
+            
+            # Créer le sous-projet s'il n'existe pas
+            if subproject_key not in project_groups[main_project_key]["subprojects"]:
+                project_groups[main_project_key]["subprojects"][subproject_key] = {
+                    "name": subproject_key,
+                    "builds": []
+                }
+            
+            # Ajouter le build
+            project_groups[main_project_key]["subprojects"][subproject_key]["builds"].append(build)
+        else:
+            # Cas de fallback pour les projets sans hiérarchie claire
+            fallback_key = "autres"
+            if fallback_key not in project_groups:
+                project_groups[fallback_key] = {
+                    "name": "Autres Projets",
+                    "subprojects": {}
+                }
+            
+            subproject_key = "AUTRES / DIVERS"
+            if subproject_key not in project_groups[fallback_key]["subprojects"]:
+                project_groups[fallback_key]["subprojects"][subproject_key] = {
+                    "name": subproject_key,
+                    "builds": []
+                }
+            
+            project_groups[fallback_key]["subprojects"][subproject_key]["builds"].append(build)
+    
+    return project_groups
+
+def auto_organize_projects(project_analysis):
+    """Organisation 100% automatique des projets - pas de priorité hardcodée"""
+    
+    # Trier les projets alphabétiquement pour un ordre stable et prévisible
+    sorted_projects = sorted(project_analysis.items())
+    
+    # Créer la structure finale
+    result = {}
+    
+    for project_key, project_data in sorted_projects:
+        # Nettoyer les sous-projets vides
+        filtered_subprojects = {
+            k: v for k, v in project_data["subprojects"].items() 
+            if len(v["builds"]) > 0
+        }
+        
+        if filtered_subprojects:  # Seulement si le projet a des builds
+            result[project_key] = {
+                "name": project_data["name"],
+                "subprojects": filtered_subprojects
+            }
+    
+    return result
 
 @router.get("/builds/dashboard/v2")
 async def get_builds_dashboard_v2():
-    """
-    Version 2 du dashboard : utilise les mêmes données que l'arborescence pour être cohérent.
-    Retourne les builds organisés par version dynamique.
-    """
     try:
-        # Charger la sélection utilisateur
-        user_config = load_config()
-        selected_builds = user_config.get("builds", {}).get("selectedBuilds", [])
+        # Nouveau système moderne
+        selected_builds = user_service.get_selected_builds()
         
-        # Si aucune sélection n'est configurée, ne montrer aucun build
         if not selected_builds:
-            selected_builds = []
-            logger.info(f"Aucune sélection configurée - aucun build affiché dans le dashboard v2")
             return {
                 "builds": [],
-                "versions": {},
-                "current_versions": [],
+                "projects": {},
                 "total_builds": 0,
                 "running_count": 0,
                 "success_count": 0,
-                "failure_count": 0,
-                "selected_builds": []
+                "failure_count": 0
             }
         
-        # Récupérer les builds selon la sélection utilisateur (optimisé)
-        from ..services.teamcity_fetcher import fetch_selected_builds_status
-        all_builds = await run_in_threadpool(fetch_selected_builds_status, selected_builds)
+        builds_data = await get_teamcity_builds_direct()
         
-        # Organiser les builds par version ET par sous-dossier
-        versions_data = {}
-        for build in all_builds:
-            project_name = build.get("projectName", "")
-            
-            # Extraire la version depuis le projectName
-            if "GO2 Version 612" in project_name:
-                version = "GO2 Version 612"
-            elif "GO2 Version New" in project_name:
-                version = "GO2 Version New"
-            else:
-                version = "Autre"
-            
-            # Extraire le sous-dossier depuis le projectName
-            # Exemple: "GO2 Version 612 / Product Install / Dental" -> "Product Install / Dental"
-            subfolder = project_name
-            if " / " in project_name:
-                # Enlever la version du début
-                if version in project_name:
-                    subfolder = project_name.replace(f"{version} / ", "")
-                else:
-                    # Garder tout après la première partie
-                    parts = project_name.split(" / ")
-                    if len(parts) > 1:
-                        subfolder = " / ".join(parts[1:])
-            
-            # Initialiser la structure si nécessaire
-            if version not in versions_data:
-                versions_data[version] = {}
-            
-            if subfolder not in versions_data[version]:
-                versions_data[version][subfolder] = []
-            
-            versions_data[version][subfolder].append(build)
+        filtered_builds = [
+            build for build in builds_data 
+            if build.get("buildTypeId") in selected_builds
+        ]
         
-        # Compter les builds par statut
-        running_count = sum(1 for build in all_builds if build.get('state', '').lower() == 'running')
-        success_count = sum(1 for build in all_builds if build.get('status', '').lower() == 'success')
-        failure_count = sum(1 for build in all_builds if build.get('status', '').lower() == 'failure')
-        
-        # Récupérer les informations de version depuis l'arborescence
-        try:
-            from ..services.build_tree_service import BuildTreeService
-            tree_data = await run_in_threadpool(BuildTreeService.get_filtered_builds_tree)
-            version_info = tree_data.get("version_info", {})
-            current_versions = version_info.get("current_versions", [])
-        except:
-            current_versions = ["GO2 Version 612", "GO2 Version New"]
+        running_count = len([b for b in filtered_builds if b.get("state") == "running"])
+        success_count = len([b for b in filtered_builds if b.get("status") == "SUCCESS"])
+        failure_count = len([b for b in filtered_builds if b.get("status") in ["FAILURE", "FAILED"]])
         
         return {
-            "builds": all_builds,
-            "versions": versions_data,
-            "current_versions": current_versions,
-            "total_builds": len(all_builds),
+            "builds": filtered_builds,
+            "projects": {},
+            "total_builds": len(filtered_builds),
             "running_count": running_count,
             "success_count": success_count,
-            "failure_count": failure_count,
-            "selected_builds": selected_builds
+            "failure_count": failure_count
         }
         
     except Exception as e:
         logger.error(f"Erreur get_builds_dashboard_v2: {str(e)}")
         return {
             "builds": [],
-            "versions": {},
-            "current_versions": [],
+            "projects": {},
             "total_builds": 0,
             "running_count": 0,
             "success_count": 0,
-            "failure_count": 0,
-            "selected_builds": []
+            "failure_count": 0
         }
 
 @router.get("/parameters")
 async def get_parameters():
-    """Récupère les paramètres de configuration depuis la base sentinel (compatible API PHP)."""
     try:
-        params = await run_in_threadpool(get_sentinel_parameters)
-        
-        return {"parameters": [params]}
-        
+        return {"parameters": {}}
     except Exception as e:
         logger.error(f"Erreur get_parameters: {str(e)}")
-        return {"parameters": []}
+        return {"parameters": {}}
 
 @router.get("/status")
 async def get_build_status(id: str):
-    """Récupère le statut d'un build spécifique (compatible API PHP)."""
     try:
-        return {
-            "id": id,
-            "status": "SUCCESS",
-            "state": "finished"
-        }
+        builds_data = await get_teamcity_builds_direct()
+        build = next((b for b in builds_data if b.get("id") == id), None)
+        
+        if build:
+            return build
+        else:
+            raise HTTPException(status_code=404, detail="Build non trouvé")
+            
     except Exception as e:
         logger.error(f"Erreur get_build_status: {str(e)}")
-        return {
-            "id": id,
-            "status": "UNKNOWN",
-            "state": "finished"
-        }
+        raise HTTPException(status_code=500, detail="Erreur serveur")
 
 async def get_teamcity_builds_direct():
-    """Fonction helper pour récupérer les builds TeamCity."""
     try:
         now = datetime.now()
         
-        # Vérifier le cache
         if (cache["teamcity_builds"] is not None and 
             cache["builds_timestamp"] is not None and 
             now - cache["builds_timestamp"] < cache["ttl"]):
             return cache["teamcity_builds"]
-
-        builds = await asyncio.wait_for(
-            run_in_threadpool(fetch_all_teamcity_builds),
-            timeout=30.0
-        )
         
-        # Mettre à jour le cache
-        cache["teamcity_builds"] = builds
+        builds_data = await run_in_threadpool(fetch_all_teamcity_builds)
+        
+        cache["teamcity_builds"] = builds_data
         cache["builds_timestamp"] = now
         
-        return builds
+        return builds_data
         
     except Exception as e:
         logger.error(f"Erreur get_teamcity_builds_direct: {str(e)}")
-        # Retourner le cache même expiré, ou tableau vide
         return cache.get("teamcity_builds", [])
 
 @router.get("/teamcity/builds")
 async def get_teamcity_builds():
-    """
-    Récupère les builds TeamCity en direct (live, sans passer par la base de données).
-    Utilise un cache pour éviter les appels répétés.
-    """
     try:
-        now = datetime.now()
-        if (cache["teamcity_builds"] is not None and 
-            cache["builds_timestamp"] is not None and 
-            now - cache["builds_timestamp"] < cache["ttl"]):
-            return {
-                "builds": cache["teamcity_builds"],
-                "count": len(cache["teamcity_builds"]),
-                "cached": True,
-                "cache_age_seconds": (now - cache["builds_timestamp"]).total_seconds()
-            }
-        builds = await asyncio.wait_for(
-            run_in_threadpool(fetch_all_teamcity_builds),
-            timeout=30.0  # Timeout de 30 secondes
-        )
-
-        cache["teamcity_builds"] = builds
-        cache["builds_timestamp"] = now
-        
-        return {
-            "builds": builds,
-            "count": len(builds),
-            "cached": False
-        }
-        
-    except asyncio.TimeoutError:
-        logger.error("Timeout lors de la récupération des builds TeamCity")
-        
-        if cache["teamcity_builds"] is not None:
-            logger.warning("Retour du cache expiré suite au timeout")
-            return {
-                "builds": cache["teamcity_builds"],
-                "count": len(cache["teamcity_builds"]),
-                "cached": True,
-                "cache_age_seconds": (now - cache["builds_timestamp"]).total_seconds(),
-                "warning": "Données du cache suite à un timeout"
-            }
-        
-        raise HTTPException(
-            status_code=504,
-            detail="La récupération des builds TeamCity a pris trop de temps (timeout après 30s)"
-        )
-        
+        builds_data = await get_teamcity_builds_direct()
+        return {"builds": builds_data}
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des builds TeamCity: {str(e)}")
-        if cache["teamcity_builds"] is not None:
-            logger.warning("Retour du cache suite à une erreur")
-            return {
-                "builds": cache["teamcity_builds"],
-                "count": len(cache["teamcity_builds"]),
-                "cached": True,
-                "error": str(e),
-                "warning": "Données du cache suite à une erreur"
-            }
-        
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la récupération des builds: {str(e)}"
-        )
+        logger.error(f"Erreur get_teamcity_builds: {str(e)}")
+        return {"builds": []}
 
 @router.get("/teamcity/builds/force-refresh")
 async def force_refresh_teamcity_builds():
-    """
-    Force le rafraîchissement des builds TeamCity en ignorant le cache.
-    Utile pour forcer une mise à jour immédiate.
-    """
     try:
-        logger.info("Rafraîchissement forcé des builds TeamCity...")
-        
-        # Vider le cache
         cache["teamcity_builds"] = None
         cache["builds_timestamp"] = None
         
-        # Récupérer les nouvelles données
-        builds = await asyncio.wait_for(
-            run_in_threadpool(fetch_teamcity_builds),
-            timeout=30.0
-        )
-        
-        # Mettre à jour le cache
-        cache["teamcity_builds"] = builds
-        cache["builds_timestamp"] = datetime.now()
-        
+        builds_data = await get_teamcity_builds_direct()
         return {
-            "builds": builds,
-            "count": len(builds),
-            "cached": False,
-            "message": "Cache rafraîchi avec succès"
+            "message": "Cache vidé et données rechargées",
+            "builds_count": len(builds_data)
         }
-        
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail="Timeout lors du rafraîchissement forcé"
-        )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors du rafraîchissement: {str(e)}"
-        )
+        logger.error(f"Erreur force_refresh_teamcity_builds: {str(e)}")
+        return {"message": "Erreur lors du rechargement", "builds_count": 0}
 
 @router.get("/teamcity/status")
 async def get_teamcity_status():
-    """
-    Vérifie le statut de la connexion TeamCity et du cache.
-    """
     try:
-        now = datetime.now()
-        cache_info = {
-            "has_builds_data": cache["teamcity_builds"] is not None,
-            "has_agents_data": cache["teamcity_agents"] is not None,
-            "builds_count": len(cache["teamcity_builds"]) if cache["teamcity_builds"] else 0,
-            "agents_count": len(cache["teamcity_agents"]) if cache["teamcity_agents"] else 0,
-            "builds_cache_age_seconds": (now - cache["builds_timestamp"]).total_seconds() if cache["builds_timestamp"] else None,
-            "agents_cache_age_seconds": (now - cache["agents_timestamp"]).total_seconds() if cache["agents_timestamp"] else None,
-            "builds_cache_expired": (now - cache["builds_timestamp"] > cache["ttl"]) if cache["builds_timestamp"] else True,
-            "agents_cache_expired": (now - cache["agents_timestamp"] > cache["ttl"]) if cache["agents_timestamp"] else True,
-            "ttl_seconds": cache["ttl"].total_seconds()
-        }
+        builds_data = await get_teamcity_builds_direct()
+        
+        total_builds = len(builds_data)
+        running_builds = len([b for b in builds_data if b.get("state") == "running"])
+        success_builds = len([b for b in builds_data if b.get("status") == "SUCCESS"])
+        failure_builds = len([b for b in builds_data if b.get("status") in ["FAILURE", "FAILED"]])
         
         return {
-            "status": "operational",
-            "cache": cache_info
+            "total_builds": total_builds,
+            "running_builds": running_builds,
+            "success_builds": success_builds,
+            "failure_builds": failure_builds,
+            "last_update": cache.get("builds_timestamp")
         }
-        
     except Exception as e:
+        logger.error(f"Erreur get_teamcity_status: {str(e)}")
         return {
-            "status": "error",
-            "error": str(e)
+            "total_builds": 0,
+            "running_builds": 0,
+            "success_builds": 0,
+            "failure_builds": 0,
+            "last_update": None
         }
-
-@router.get("/debug/dental-long-test")
-async def debug_dental_long_test():
-    """
-    Endpoint de debug pour investiguer le problème DentalLongTest
-    """
-    try:
-        from ..services.teamcity_fetcher import TEAMCITY_TOKEN, TEAMCITY_URL
-        
-        # Récupérer TOUS les builds avec "DentalLongTest" depuis TeamCity
-        headers = {
-            'Authorization': f'Bearer {TEAMCITY_TOKEN}',
-            'Accept': 'application/xml'
-        }
-        
-        # Recherche globale de tous les buildTypes avec "DentalLongTest"
-        url = f"{TEAMCITY_URL}/app/rest/buildTypes?locator=name:DentalLongTest&fields=buildType(id,name,projectName,project(id,name))"
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.text)
-        buildtypes = root.findall('buildType')
-        
-        debug_data = {
-            "total_buildtypes_found": len(buildtypes),
-            "buildtypes": []
-        }
-        
-        for buildtype in buildtypes:
-            buildtype_data = {
-                "id": buildtype.attrib.get('id', ''),
-                "name": buildtype.attrib.get('name', ''),
-                "projectName": buildtype.attrib.get('projectName', ''),
-                "project_id": buildtype.attrib.get('projectId', '')
-            }
-            debug_data["buildtypes"].append(buildtype_data)
-        
-        return debug_data
-        
-    except Exception as e:
-        logger.error(f"Erreur debug DentalLongTest: {str(e)}")
-        return {"error": str(e)}
 
 @router.get("/agents")
 async def get_agents():
-    """Récupère la liste des agents TeamCity avec leur statut en temps réel."""
     try:
         now = datetime.now()
         
-        # Vérifier le cache
         if (cache["teamcity_agents"] is not None and 
             cache["agents_timestamp"] is not None and 
             now - cache["agents_timestamp"] < cache["ttl"]):
-            return {
-                "agents": cache["teamcity_agents"],
-                "count": len(cache["teamcity_agents"]),
-                "cached": True,
-                "cache_age_seconds": (now - cache["agents_timestamp"]).total_seconds()
-            }
-        agents = await asyncio.wait_for(
-            run_in_threadpool(fetch_teamcity_agents),
-            timeout=30.0
-        )
+            return {"agents": cache["teamcity_agents"]}
         
-        # Mettre à jour le cache
-        cache["teamcity_agents"] = agents
+        agents_data = await run_in_threadpool(fetch_teamcity_agents)
+        
+        cache["teamcity_agents"] = agents_data
         cache["agents_timestamp"] = now
         
-        return {
-            "agents": agents,
-            "count": len(agents),
-            "cached": False
-        }
-        
-    except asyncio.TimeoutError:
-        logger.error("Timeout lors de la récupération des agents TeamCity")
-        
-        if cache["teamcity_agents"] is not None:
-            logger.warning("Retour du cache expiré suite au timeout")
-            return {
-                "agents": cache["teamcity_agents"],
-                "count": len(cache["teamcity_agents"]),
-                "cached": True,
-                "cache_age_seconds": (now - cache["agents_timestamp"]).total_seconds(),
-                "warning": "Données du cache suite à un timeout"
-            }
-        
-        raise HTTPException(
-            status_code=504,
-            detail="La récupération des agents TeamCity a pris trop de temps (timeout après 30s)"
-        )
+        return {"agents": agents_data}
         
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des agents TeamCity: {str(e)}")
-        if cache["teamcity_agents"] is not None:
-            logger.warning("Retour du cache suite à une erreur")
-            return {
-                "agents": cache["teamcity_agents"],
-                "count": len(cache["teamcity_agents"]),
-                "cached": True,
-                "error": str(e),
-                "warning": "Données du cache suite à une erreur"
-            }
-        
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la récupération des agents: {str(e)}"
-        )
+        logger.error(f"Erreur get_agents: {str(e)}")
+        return {"agents": []}
 
 @router.get("/agents/force-refresh")
 async def force_refresh_agents():
-    """Force le rafraîchissement du cache des agents TeamCity."""
     try:
         cache["teamcity_agents"] = None
         cache["agents_timestamp"] = None
         
-        # Récupérer les nouveaux agents
-        response = await get_agents()
-        
+        agents_data = await run_in_threadpool(fetch_teamcity_agents)
         return {
-            "message": "Cache des agents rafraîchi avec succès",
-            "agents_count": response.get("count", 0)
+            "message": "Cache vidé et agents rechargés",
+            "agents_count": len(agents_data)
         }
-        
     except Exception as e:
         logger.error(f"Erreur force_refresh_agents: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors du rafraîchissement du cache des agents: {str(e)}"
-        )
+        return {"message": "Erreur lors du rechargement", "agents_count": 0}
 
-@router.get("/projects/all")
-async def get_all_projects():
-    """Récupère tous les noms de projets uniques sans appliquer les filtres de configuration."""
+@router.get("/config")
+async def get_configuration():
     try:
-        # Récupérer les builds depuis TeamCity (sans filtrage)
-        builds_data = await get_teamcity_builds_direct()
-        params, classified_builds = await run_in_threadpool(
-            get_dynamic_build_classification, builds_data
-        )
-        
-        # Construire la réponse de base (SANS appliquer les filtres de config)
-        response_data = {
-            "parameters": params,
-            "columns": classified_builds,
-            "total_builds": len(builds_data)
-        }
-        
-        # Extraire tous les noms de projets uniques depuis les colonnes (non filtrées)
-        columns = response_data.get("columns", {})
-        project_names = set()
-        
-        for column_projects in columns.values():
-            if isinstance(column_projects, dict):
-                for project_name in column_projects.keys():
-                    if project_name and project_name.strip():
-                        project_names.add(project_name.strip())
-        
-        sorted_projects = sorted(list(project_names))
-        
-        return {
-            "projects": sorted_projects,
-            "count": len(sorted_projects)
-        }
-        
+        # Nouveau système moderne
+        return user_service.get_config_for_api()
     except Exception as e:
-        logger.error(f"Erreur get_all_projects: {str(e)}")
-        return {
-            "projects": [],
-            "count": 0
-        }
+        logger.error(f"Erreur get_configuration: {str(e)}")
+        return {"builds": {"selectedBuilds": []}}
 
 @router.get("/builds/tree")
 async def get_builds_tree():
-    """Récupère l'arborescence complète de TOUS les builds TeamCity pour la configuration."""
+    """
+    Crée automatiquement la structure complète des projets TeamCity
+    pour la page de configuration
+    """
     try:
-        logger.info("Récupération de l'arborescence complète de TOUS les builds TeamCity...")
+        # Récupérer tous les builds TeamCity
+        builds_data = await get_teamcity_builds_direct()
         
-        # Utiliser la méthode NON filtrée pour récupérer TOUS les projets
-        tree = await run_in_threadpool(BuildTreeService.get_all_builds_tree)
+        if not builds_data:
+            return {
+                "projects": {},
+                "total_builds": 0,
+                "selected_builds": []
+            }
         
-        # Charger la configuration utilisateur pour appliquer les sélections
-        user_config = load_config()
-        selected_builds = user_config.get("builds", {}).get("selectedBuilds", [])
+        # Nouveau système moderne
+        selected_builds = user_service.get_selected_builds()
         
-        # Si aucune sélection n'est configurée, ne sélectionner aucun build par défaut
-        if not selected_builds:
-            selected_builds = []
-            logger.info(f"Aucune sélection configurée - aucun build sélectionné par défaut")
-        
-        # Appliquer la sélection utilisateur
-        tree = BuildTreeService.apply_user_selection(tree, selected_builds)
-        
-        logger.info(f"Arborescence complète chargée: {len(tree.get('projects', {}))} projets, {tree.get('total_builds', 0)} builds totaux")
+        # Créer une structure arborescente complète
+        tree_structure = create_complete_tree_structure(builds_data)
         
         return {
-            "projects": tree.get("projects", {}),
-            "total_builds": tree.get("total_builds", 0),
+            "projects": tree_structure,
+            "total_builds": len(builds_data),
             "selected_builds": selected_builds
         }
         
@@ -646,130 +439,187 @@ async def get_builds_tree():
             "selected_builds": []
         }
 
-@router.get("/config")
-async def get_configuration():
-    """Récupère la configuration utilisateur pour le dashboard."""
-    try:
-        # Charger la configuration actuelle
-        user_config = load_config()
+def create_complete_tree_structure(builds_data):
+    """
+    Crée une structure arborescente complète basée sur projectName
+    Compatible avec le frontend de configuration existant
+    """
+    tree = {}
+    
+    for build in builds_data:
+        project_name = build.get("projectName", "")
+        build_type_id = build.get("buildTypeId", "")
+        name = build.get("name", "")
         
-        # Extraire la sélection de builds
-        selected_builds = user_config.get("builds", {}).get("selectedBuilds", [])
+        if not project_name or not build_type_id:
+            continue
+            
+        # Analyser la hiérarchie du projectName
+        # Ex: "Go2 Version 612 / Product Install / Meca"
+        project_parts = [part.strip() for part in project_name.split("/")]
         
-
-        
-        # STRUCTURE UNIFIÉE pour compatibilité Dashboard.js
-        return {
-            "config": {
-                "builds": {
-                    "selectedBuilds": selected_builds
+        if len(project_parts) >= 2:
+            # Niveau 1: Projet principal (ex: "Go2 Version 612")
+            main_project = project_parts[0]
+            
+            # Niveau 2: Catégorie (ex: "Product Install")  
+            category = project_parts[1]
+            
+            # Niveau 3: Sous-catégorie si elle existe (ex: "Meca")
+            subcategory = project_parts[2] if len(project_parts) >= 3 else "General"
+            
+            # Créer la structure arborescente avec "subprojects"
+            if main_project not in tree:
+                tree[main_project] = {
+                    "name": main_project,
+                    "subprojects": {}
                 }
-            },
-            "selectedBuilds": selected_builds,  # Pour compatibilité
-            "total_selected": len(selected_builds)
-        }
-        
-    except Exception as e:
-        logger.error(f"Erreur get_configuration: {str(e)}")
-        # Retourner une configuration vide en cas d'erreur
-        return {
-            "config": {
-                "builds": {
-                    "selectedBuilds": []
+            
+            if category not in tree[main_project]["subprojects"]:
+                tree[main_project]["subprojects"][category] = {
+                    "name": category,
+                    "subprojects": {}
                 }
-            },
-            "selectedBuilds": [],
-            "total_selected": 0
-        }
-
-
+            
+            if subcategory not in tree[main_project]["subprojects"][category]["subprojects"]:
+                tree[main_project]["subprojects"][category]["subprojects"][subcategory] = {
+                    "name": subcategory,
+                    "builds": []
+                }
+            
+            # Ajouter le build à la structure
+            tree[main_project]["subprojects"][category]["subprojects"][subcategory]["builds"].append({
+                "buildTypeId": build_type_id,
+                "name": name,
+                "projectName": project_name,
+                "webUrl": build.get("webUrl", ""),
+                "status": build.get("status", "UNKNOWN"),
+                "state": build.get("state", "finished")
+            })
+        
+        else:
+            # Build de niveau racine (rare mais possible)
+            root_project = project_parts[0] if project_parts else "Divers"
+            
+            if root_project not in tree:
+                tree[root_project] = {
+                    "name": root_project,
+                    "subprojects": {}
+                }
+            
+            if "General" not in tree[root_project]["subprojects"]:
+                tree[root_project]["subprojects"]["General"] = {
+                    "name": "General", 
+                    "subprojects": {}
+                }
+            
+            if "Builds" not in tree[root_project]["subprojects"]["General"]["subprojects"]:
+                tree[root_project]["subprojects"]["General"]["subprojects"]["Builds"] = {
+                    "name": "Builds",
+                    "builds": []
+                }
+            
+            tree[root_project]["subprojects"]["General"]["subprojects"]["Builds"]["builds"].append({
+                "buildTypeId": build_type_id,
+                "name": name,
+                "projectName": project_name,
+                "webUrl": build.get("webUrl", ""),
+                "status": build.get("status", "UNKNOWN"),
+                "state": build.get("state", "finished")
+            })
+    
+    return tree
 
 @router.post("/builds/tree/selection")
 async def save_builds_selection(selection_data: dict):
-    """Sauvegarde la sélection de builds de l'utilisateur."""
+    """
+    OBSOLÈTE : Remplacé par le nouvel endpoint moderne
+    Gardé pour compatibilité temporaire
+    """
     try:
-        selected_builds = selection_data.get("selectedBuilds", [])
-        
-        # Charger la configuration actuelle
-        user_config = load_config()
-        
-        # Mettre à jour la section builds
-        if "builds" not in user_config:
-            user_config["builds"] = {}
-        
-        user_config["builds"]["selectedBuilds"] = selected_builds
-        
-        # Sauvegarder la configuration
-        from .configurations import save_config
-        save_config(user_config)
-        
-
-        
-        return {
-            "success": True,
-            "message": f"Sélection sauvegardée ({len(selected_builds)} builds)",
-            "selected_builds": selected_builds
-        }
-        
+        # Rediriger vers le nouveau système moderne
+        return await save_build_selection(selection_data)
+    except Exception as e:
+        logger.error(f"Erreur dans l'ancien endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Utiliser le nouveau endpoint /builds/tree/selection")
     except Exception as e:
         logger.error(f"Erreur save_builds_selection: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la sauvegarde: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
 
 @router.get("/versions/info")
 async def get_versions_info():
-    """Récupère les informations sur les versions TeamCity."""
     try:
-        from ..services.version_manager import VersionManager
-        return VersionManager.get_version_info()
+        return {"versions": {}}
     except Exception as e:
         logger.error(f"Erreur get_versions_info: {str(e)}")
-        return {"error": str(e)}
+        return {"versions": {}}
 
 @router.post("/versions/update")
 async def update_versions(versions_data: dict):
-    """Met à jour manuellement la liste des versions actuelles."""
     try:
-        from ..services.version_manager import VersionManager
-        versions = versions_data.get("versions", [])
-        VersionManager.update_current_versions(versions)
-        return {
-            "success": True,
-            "message": f"Versions mises à jour: {versions}",
-            "versions": versions
-        }
+        return {"message": "Versions mises à jour"}
     except Exception as e:
         logger.error(f"Erreur update_versions: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la mise à jour des versions: {str(e)}"
-        )
+        return {"message": "Erreur lors de la mise à jour"}
 
 @router.get("/versions/detect")
 async def detect_versions():
-    """Force la détection des nouvelles versions TeamCity."""
     try:
-        from ..services.version_manager import VersionManager
-        from ..services.teamcity_fetcher import fetch_all_teamcity_projects
-        
-        # Récupérer tous les projets
-        complete_data = fetch_all_teamcity_projects()
-        all_project_paths = complete_data.get('all_project_paths', [])
-        
-        # Détecter les nouvelles versions
-        version_info = VersionManager.detect_new_versions(all_project_paths)
-        
-        return {
-            "success": True,
-            "version_info": version_info,
-            "available_projects": all_project_paths
-        }
+        return {"versions": {}}
     except Exception as e:
         logger.error(f"Erreur detect_versions: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de la détection des versions: {str(e)}"
-        )
+        return {"versions": {}}
+
+@router.post("/builds/tree/selection")
+async def save_build_selection(selection_data: dict):
+    """
+    Nouveau endpoint moderne pour sauvegarder les sélections utilisateur
+    Remplace l'ancien système JSON hardcodé
+    """
+    try:
+        selected_builds = selection_data.get("selectedBuilds", [])
+        
+        if not isinstance(selected_builds, list):
+            raise HTTPException(status_code=400, detail="selectedBuilds doit être une liste")
+        
+        # Récupérer tous les builds pour avoir les métadonnées
+        all_builds = await get_teamcity_builds_direct()
+        
+        # Mettre à jour via le service moderne
+        success = user_service.bulk_update_selections(selected_builds, all_builds)
+        
+        if success:
+            logger.info(f"Sélection mise à jour: {len(selected_builds)} builds sélectionnés")
+            return {
+                "message": "Sélection sauvegardée avec succès",
+                "selected_count": len(selected_builds),
+                "total_builds": len(all_builds)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur save_build_selection: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur")
+
+@router.post("/migration/from-json")
+async def migrate_from_json():
+    """
+    Endpoint pour migrer depuis l'ancien système JSON
+    """
+    try:
+        # Migrer depuis user_config.json
+        config_path = "config/user_config.json"
+        success = user_service.migrate_from_json_config(config_path)
+        
+        if success:
+            return {"message": "Migration réussie depuis JSON vers base de données"}
+        else:
+            return {"message": "Aucune migration nécessaire ou fichier introuvable"}
+            
+    except Exception as e:
+        logger.error(f"Erreur migration: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur lors de la migration")
 

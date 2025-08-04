@@ -54,6 +54,10 @@
                 </button>
             </div>
             <div class="controls-right">
+                <div class="search-container">
+                    <input type="text" id="builds-search" placeholder="Rechercher des builds..." class="search-input">
+                    <i data-lucide="search" style="width: 16px; height: 16px; color: #7d8590;"></i>
+                </div>
                 <button class="save-btn" onclick="saveConfiguration()">
                     <i data-lucide="save" style="width: 14px; height: 14px;"></i>
                     Sauvegarder la sélection
@@ -75,6 +79,8 @@
         </div>
     </main>
 
+    <!-- Configuration API centralisée -->
+    <script src="assets/js/ApiConfig.js"></script>
     <script src="assets/js/Config.js"></script>
     <script>
         // Initialiser Lucide Icons

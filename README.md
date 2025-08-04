@@ -1,150 +1,210 @@
-# TeamCity Monitor - GO2CAM
+# TeamCity Monitor
 
-## 📋 Description
+Un outil de surveillance des builds TeamCity avec intégration dynamique et configuration JSON.
 
-Système de monitoring moderne pour TeamCity avec interface web responsive. Permet de surveiller les builds et agents TeamCity en temps réel avec une interface utilisateur intuitive.
+## 🎯 **Nouveau système d'intégration**
 
-## 🚀 Fonctionnalités
+Le système combine maintenant :
+- **Données dynamiques** : Récupération automatique de tous les projets non-archivés via l'API TeamCity
+- **Configuration JSON** : Filtrage et organisation selon les patterns définis dans `config/dashboard_config.json`
 
-- **Dashboard en temps réel** : Affichage des statuts des builds avec animations
-- **Configuration interactive** : Interface pour sélectionner les builds à surveiller
-- **API REST moderne** : Backend Python FastAPI performant
-- **Interface responsive** : Frontend HTML/CSS/JS moderne
-- **Synchronisation automatique** : Rafraîchissement des données toutes les 60 secondes
-- **Gestion des agents** : Surveillance des agents TeamCity
-
-## 🛠️ Technologies
-
-- **Backend** : Python 3.12, FastAPI, uvicorn
-- **Frontend** : HTML5, CSS3, JavaScript ES6+
-- **Base de données** : MySQL (optionnel)
-- **API** : TeamCity REST API
-- **Déploiement** : Docker-ready
-
-## 📦 Installation
-
-### Prérequis
-
-- Python 3.12+
-- MySQL (optionnel)
-- Accès à TeamCity
-
-### Installation locale
-
-1. **Cloner le repository**
-   ```bash
-   git clone https://github.com/saleh-td/TeamCity_go2CAM.git
-   cd TeamCity_go2CAM
-   ```
-
-2. **Créer l'environnement virtuel**
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate  # Windows
-   source venv/bin/activate  # Linux/Mac
-   ```
-
-3. **Installer les dépendances**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configuration**
-   - Copier `.env.example` vers `.env`
-   - Configurer les variables d'environnement TeamCity
-
-5. **Lancer l'application**
-   ```bash
-   python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-
-6. **Accéder à l'application**
-   - Dashboard : http://localhost:8000/static/index.html
-   - Configuration : http://localhost:8000/static/config.html
-   - API Docs : http://localhost:8000/docs
-
-## 🔧 Configuration
-
-### Variables d'environnement
-
-Créer un fichier `.env` :
-
-```env
-# TeamCity Configuration
-TEAMCITY_URL=http://192.168.0.48:8080
-TEAMCITY_TOKEN=your_teamcity_token_here
-
-# Database Configuration (optionnel)
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=sentinel
-```
-
-### Configuration des builds
-
-1. Accéder à http://localhost:8000/static/config.html
-2. Sélectionner les builds à surveiller
-3. Sauvegarder la configuration
-
-## 📁 Structure du projet
+## 📁 **Structure du projet**
 
 ```
 teamcity_monitor/
-├── api/                    # Backend FastAPI
-│   ├── routes/            # Routes API
-│   ├── services/          # Services métier
-│   └── main.py           # Point d'entrée API
-├── frontend/              # Interface utilisateur
-│   ├── assets/           # CSS, JS, images
-│   ├── index.html        # Dashboard principal
-│   └── config.html       # Page de configuration
-├── config/               # Configuration utilisateur
-├── core/                 # Logique métier
-└── README.md            # Documentation
+├── api/
+│   ├── services/
+│   │   ├── teamcity_fetcher.py      # API TeamCity (nettoyé)
+│   │   ├── config_service.py        # Service de configuration JSON
+│   │   └── build_tree_service.py    # Arborescence des builds
+│   └── routes/
+│       ├── config_routes.py         # Nouvelles routes organisées
+│       └── builds.py                # Routes existantes
+├── config/
+│   └── dashboard_config.json        # Configuration des patterns
+└── frontend/
+    └── assets/
+        └── js/
+            ├── Dashboard.js         # Interface utilisateur
+            └── Config.js            # Configuration
 ```
 
-## 🔌 API Endpoints
+## 🔧 **Configuration JSON**
 
-- `GET /api/builds` - Récupérer tous les builds
-- `GET /api/agents` - Récupérer les agents
-- `GET /api/config` - Récupérer la configuration
-- `POST /api/builds/tree/selection` - Sauvegarder la sélection
+Le fichier `config/dashboard_config.json` définit :
 
-## 🚀 Déploiement
+### **Projets et patterns**
+```json
+{
+  "projects": {
+    "GO2 Version 612": {
+      "builds": "builds-612",
+      "title": "title-612",
+      "icon": "database",
+      "prefixes": ["Go2Version612"]
+    },
+    "GO2 Version New": {
+      "builds": "builds-new",
+      "title": "title-new", 
+      "icon": "sparkles",
+      "prefixes": [
+        "Go2VersionNew",
+        "InstalleursNew",
+        "GO2camNew"
+      ]
+    }
+  }
+}
+```
 
-### Docker
+### **Sous-catégories**
+```json
+{
+  "subcategories": {
+    "ProductInstall": {
+      "patterns": ["ProductInstall", "Installeurs"],
+      "subprojects": ["Meca", "Dental"]
+    }
+  }
+}
+```
+
+### **Statuts et détection automatique**
+```json
+{
+  "statuses": {
+    "SUCCESS": ["SUCCESS", "success"],
+    "FAILURE": ["FAILURE", "failure", "FAILED"],
+    "RUNNING": ["RUNNING", "running"]
+  },
+  "autoDetection": {
+    "enabled": true,
+    "fallbackToConfig": true,
+    "cacheTimeout": 300,
+    "maxProjects": 10
+  }
+}
+```
+
+## 🚀 **Nouvelles API endpoints**
+
+### **Builds organisés**
+- `GET /api/organized/builds` - Builds filtrés selon la configuration JSON
+- `GET /api/organized/builds/status` - Builds avec statut actuel
+- `GET /api/organized/dashboard` - Dashboard complet avec sélection utilisateur
+
+### **Projets et agents**
+- `GET /api/organized/projects` - Projets organisés par catégorie
+- `GET /api/organized/agents` - Agents avec statistiques
+
+### **Configuration**
+- `GET /api/organized/config` - Configuration complète (JSON + utilisateur)
+- `POST /api/organized/cache/clear` - Vide le cache
+
+## 🔄 **Fonctionnement**
+
+### **1. Récupération dynamique**
+```python
+# Récupère tous les projets non-archivés
+builds_data = fetch_all_teamcity_builds()
+```
+
+### **2. Filtrage par patterns**
+```python
+# Filtre selon les prefixes du JSON
+filtered_builds = config_service.filter_builds_by_project_patterns(builds_data)
+```
+
+### **3. Organisation par catégorie**
+```python
+# Organise en catégories définies dans le JSON
+organized_data = {
+    "GO2 Version 612": [...],
+    "GO2 Version New": [...],
+    "Autres": [...]
+}
+```
+
+### **4. Métadonnées des projets**
+```python
+# Récupère titre, icône, etc.
+metadata = config_service.get_project_metadata("GO2 Version 612")
+# → {"title": "title-612", "icon": "database", "builds_id": "builds-612"}
+```
+
+## 📊 **Exemple de réponse API**
+
+```json
+{
+  "builds": {
+    "GO2 Version 612": [
+      {
+        "id": "Go2Version612_ProductInstall_BuildDebug",
+        "buildTypeId": "Go2Version612_ProductInstall_BuildDebug",
+        "name": "Build Debug",
+        "status": "SUCCESS",
+        "state": "finished",
+        "webUrl": "http://teamcity/viewType.html?buildTypeId=...",
+        "projectName": "GO2 Version 612"
+      }
+    ]
+  },
+  "categories": {
+    "GO2 Version 612": {
+      "title": "title-612",
+      "icon": "database",
+      "builds_id": "builds-612"
+    }
+  },
+  "total_builds": 1,
+  "running_count": 0,
+  "success_count": 1,
+  "failure_count": 0
+}
+```
+
+## 🎛️ **Configuration utilisateur**
+
+La sélection des builds est stockée dans `config/user_config.json` :
+
+```json
+{
+  "builds": {
+    "selectedBuilds": [
+      "Go2Version612_ProductInstall_BuildDebug",
+      "Go2VersionNew_ProductCompil_BuildRelease"
+    ]
+  }
+}
+```
+
+## 🔄 **Migration depuis l'ancien système**
+
+1. **Les routes existantes continuent de fonctionner**
+2. **Nouvelles routes organisées disponibles**
+3. **Configuration JSON optionnelle** (fallback automatique)
+4. **Cache intelligent** pour les performances
+
+## 🚀 **Démarrage**
 
 ```bash
-docker build -t teamcity-monitor .
-docker run -p 8000:8000 teamcity-monitor
+# Installation
+pip install -r requirements.txt
+
+# Configuration
+cp env.example .env
+# Éditer .env avec vos paramètres TeamCity
+
+# Démarrage
+python start_server.py
 ```
 
-### Production
+## 📈 **Avantages du nouveau système**
 
-```bash
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-## 🤝 Contribution
-
-1. Fork le projet
-2. Créer une branche feature (`git checkout -b feature/AmazingFeature`)
-3. Commit les changements (`git commit -m 'Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
-
-## 📝 Licence
-
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
-
-## 👥 Auteurs
-
-- **Saleh** - *Développement initial* - [saleh-td](https://github.com/saleh-td)
-
-## 🙏 Remerciements
-
-- TeamCity pour l'API REST
-- FastAPI pour le framework backend
-- Tous les contributeurs du projet 
+- ✅ **Détection automatique** de tous les projets TeamCity
+- ✅ **Filtrage intelligent** selon les patterns JSON
+- ✅ **Organisation flexible** par catégories
+- ✅ **Métadonnées enrichies** (titres, icônes)
+- ✅ **Cache optimisé** pour les performances
+- ✅ **Rétrocompatibilité** avec l'ancien système
+- ✅ **Configuration utilisateur** persistante 

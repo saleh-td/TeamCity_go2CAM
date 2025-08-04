@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .routes import builds, agents, configurations
+from .routes import builds, agents
 import os
 import logging
 
@@ -29,11 +29,10 @@ app.add_middleware(
 )
 
 
-app.include_router(builds.router, prefix="/api/v1", tags=["builds"])
-app.include_router(agents.router)
-app.include_router(configurations.router, prefix="/api", tags=["configurations"])
-
-app.include_router(builds.router, prefix="/api", tags=["builds-legacy"])
+# Routes principales pour le frontend existant
+app.include_router(builds.router, prefix="/api", tags=["builds"])
+app.include_router(agents.router, prefix="/api", tags=["agents"])
+# Plus de configurations.router - intégré dans builds.router
 
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 app.mount("/static", StaticFiles(directory=frontend_path), name="static")
@@ -44,5 +43,13 @@ async def root():
         "message": "Bienvenue sur l'API TeamCity Monitor",
         "version": "1.0.0",
         "documentation": "/docs",
-        "dashboard": "/static/index.html"
+        "dashboard": "/static/index.html",
+        "endpoints": {
+            "builds": "/api/builds",
+            "agents": "/api/agents", 
+            "config": "/api/config",
+            "dashboard": "/api/builds/dashboard",
+            "tree": "/api/builds/tree",
+            "selection": "/api/builds/tree/selection"
+        }
     } 
