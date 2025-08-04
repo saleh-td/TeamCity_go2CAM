@@ -33,12 +33,8 @@ async def get_builds():
         
         builds_data = await get_teamcity_builds_direct()
         
-        # Plus besoin de filtrage - système automatique moderne !
         if builds_data:
-            # Tous les builds sont automatiquement organisés
-            all_filtered_builds = builds_data
-            
-            builds_data = all_filtered_builds
+            builds_data = builds_data
         
         cache["teamcity_builds"] = builds_data
         cache["builds_timestamp"] = now
@@ -60,7 +56,6 @@ async def get_builds_classified():
             "total_builds": len(builds_data)
         }
         
-        # Nouveau système moderne - plus de filtrage primitif !
         return response_data
         
     except Exception as e:
@@ -74,7 +69,6 @@ async def get_builds_classified():
 @router.get("/builds/dashboard")
 async def get_builds_dashboard():
     try:
-        # Nouveau système moderne
         selected_builds = user_service.get_selected_builds()
         
         if not selected_builds:
@@ -94,7 +88,6 @@ async def get_builds_dashboard():
             if build.get("buildTypeId") in selected_builds
         ]
         
-        # Organiser les builds par catégories logiques selon les patterns
         projects_organized = organize_builds_by_patterns(filtered_builds)
         
         running_count = len([b for b in filtered_builds if b.get("state") == "running"])
@@ -124,56 +117,43 @@ async def get_builds_dashboard():
 def organize_builds_by_patterns(builds):
     """Organise les builds automatiquement en analysant leurs patterns"""
     
-    # 1. ANALYSE AUTOMATIQUE DES PROJECTS DEPUIS LES BUILDS
     project_analysis = analyze_build_projects(builds)
-    
-    # 2. ORGANISATION AUTOMATIQUE EN COLONNES
     organized_projects = auto_organize_projects(project_analysis)
     
     return organized_projects
 
 def analyze_build_projects(builds):
-    """Analyse 100% automatique basée sur les vrais noms de projets TeamCity"""
+    """Analyse automatique basée sur les vrais noms de projets TeamCity"""
     project_groups = {}
     
     for build in builds:
         project_name = build.get("projectName", "Unknown Project")
-        
-
         project_parts = [part.strip() for part in project_name.split("/")]
         
         if len(project_parts) >= 1:
             main_project = project_parts[0]
             main_project_key = main_project.lower().replace(" ", "").replace(".", "")
             
-            # Créer le projet principal s'il n'existe pas
             if main_project_key not in project_groups:
                 project_groups[main_project_key] = {
                     "name": main_project,
                     "subprojects": {}
                 }
             
-            # Construire la clé du sous-projet à partir de TOUS les niveaux restants
             if len(project_parts) > 1:
-                # Utiliser tous les niveaux restants comme sous-projet
-                # Ex: "Product Compil / GO2cam" ou "Internal Libraries / GO2Dlls"
                 subproject_path = " / ".join(project_parts[1:])
                 subproject_key = f"{main_project.upper()} / {subproject_path.upper()}"
             else:
-                # Si pas de sous-projet, utiliser le nom principal
                 subproject_key = f"{main_project.upper()} / GENERAL"
             
-            # Créer le sous-projet s'il n'existe pas
             if subproject_key not in project_groups[main_project_key]["subprojects"]:
                 project_groups[main_project_key]["subprojects"][subproject_key] = {
                     "name": subproject_key,
                     "builds": []
                 }
             
-            # Ajouter le build
             project_groups[main_project_key]["subprojects"][subproject_key]["builds"].append(build)
         else:
-            # Cas de fallback pour les projets sans hiérarchie claire
             fallback_key = "autres"
             if fallback_key not in project_groups:
                 project_groups[fallback_key] = {
@@ -193,22 +173,18 @@ def analyze_build_projects(builds):
     return project_groups
 
 def auto_organize_projects(project_analysis):
-    """Organisation 100% automatique des projets - pas de priorité hardcodée"""
+    """Organisation automatique des projets"""
     
-    # Trier les projets alphabétiquement pour un ordre stable et prévisible
     sorted_projects = sorted(project_analysis.items())
-    
-    # Créer la structure finale
     result = {}
     
     for project_key, project_data in sorted_projects:
-        # Nettoyer les sous-projets vides
         filtered_subprojects = {
             k: v for k, v in project_data["subprojects"].items() 
             if len(v["builds"]) > 0
         }
         
-        if filtered_subprojects:  # Seulement si le projet a des builds
+        if filtered_subprojects:
             result[project_key] = {
                 "name": project_data["name"],
                 "subprojects": filtered_subprojects
@@ -219,7 +195,6 @@ def auto_organize_projects(project_analysis):
 @router.get("/builds/dashboard/v2")
 async def get_builds_dashboard_v2():
     try:
-        # Nouveau système moderne
         selected_builds = user_service.get_selected_builds()
         
         if not selected_builds:
@@ -396,7 +371,6 @@ async def force_refresh_agents():
 @router.get("/config")
 async def get_configuration():
     try:
-        # Nouveau système moderne
         return user_service.get_config_for_api()
     except Exception as e:
         logger.error(f"Erreur get_configuration: {str(e)}")
@@ -404,12 +378,8 @@ async def get_configuration():
 
 @router.get("/builds/tree")
 async def get_builds_tree():
-    """
-    Crée automatiquement la structure complète des projets TeamCity
-    pour la page de configuration
-    """
+    """Crée automatiquement la structure complète des projets TeamCity pour la page de configuration"""
     try:
-        # Récupérer tous les builds TeamCity
         builds_data = await get_teamcity_builds_direct()
         
         if not builds_data:
@@ -419,10 +389,7 @@ async def get_builds_tree():
                 "selected_builds": []
             }
         
-        # Nouveau système moderne
         selected_builds = user_service.get_selected_builds()
-        
-        # Créer une structure arborescente complète
         tree_structure = create_complete_tree_structure(builds_data)
         
         return {
@@ -440,10 +407,7 @@ async def get_builds_tree():
         }
 
 def create_complete_tree_structure(builds_data):
-    """
-    Crée une structure arborescente complète basée sur projectName
-    Compatible avec le frontend de configuration existant
-    """
+    """Crée une structure arborescente complète basée sur projectName"""
     tree = {}
     
     for build in builds_data:
@@ -454,21 +418,13 @@ def create_complete_tree_structure(builds_data):
         if not project_name or not build_type_id:
             continue
             
-        # Analyser la hiérarchie du projectName
-        # Ex: "Go2 Version 612 / Product Install / Meca"
         project_parts = [part.strip() for part in project_name.split("/")]
         
         if len(project_parts) >= 2:
-            # Niveau 1: Projet principal (ex: "Go2 Version 612")
             main_project = project_parts[0]
-            
-            # Niveau 2: Catégorie (ex: "Product Install")  
             category = project_parts[1]
-            
-            # Niveau 3: Sous-catégorie si elle existe (ex: "Meca")
             subcategory = project_parts[2] if len(project_parts) >= 3 else "General"
             
-            # Créer la structure arborescente avec "subprojects"
             if main_project not in tree:
                 tree[main_project] = {
                     "name": main_project,
@@ -487,7 +443,6 @@ def create_complete_tree_structure(builds_data):
                     "builds": []
                 }
             
-            # Ajouter le build à la structure
             tree[main_project]["subprojects"][category]["subprojects"][subcategory]["builds"].append({
                 "buildTypeId": build_type_id,
                 "name": name,
@@ -498,7 +453,6 @@ def create_complete_tree_structure(builds_data):
             })
         
         else:
-            # Build de niveau racine (rare mais possible)
             root_project = project_parts[0] if project_parts else "Divers"
             
             if root_project not in tree:
@@ -532,19 +486,12 @@ def create_complete_tree_structure(builds_data):
 
 @router.post("/builds/tree/selection")
 async def save_builds_selection(selection_data: dict):
-    """
-    OBSOLÈTE : Remplacé par le nouvel endpoint moderne
-    Gardé pour compatibilité temporaire
-    """
+    """OBSOLÈTE : Remplacé par le nouvel endpoint moderne"""
     try:
-        # Rediriger vers le nouveau système moderne
         return await save_build_selection(selection_data)
     except Exception as e:
         logger.error(f"Erreur dans l'ancien endpoint: {e}")
         raise HTTPException(status_code=500, detail="Utiliser le nouveau endpoint /builds/tree/selection")
-    except Exception as e:
-        logger.error(f"Erreur save_builds_selection: {str(e)}")
-        raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
 
 @router.get("/versions/info")
 async def get_versions_info():
@@ -572,20 +519,14 @@ async def detect_versions():
 
 @router.post("/builds/tree/selection")
 async def save_build_selection(selection_data: dict):
-    """
-    Nouveau endpoint moderne pour sauvegarder les sélections utilisateur
-    Remplace l'ancien système JSON hardcodé
-    """
+    """Nouveau endpoint moderne pour sauvegarder les sélections utilisateur"""
     try:
         selected_builds = selection_data.get("selectedBuilds", [])
         
         if not isinstance(selected_builds, list):
             raise HTTPException(status_code=400, detail="selectedBuilds doit être une liste")
         
-        # Récupérer tous les builds pour avoir les métadonnées
         all_builds = await get_teamcity_builds_direct()
-        
-        # Mettre à jour via le service moderne
         success = user_service.bulk_update_selections(selected_builds, all_builds)
         
         if success:
@@ -606,11 +547,8 @@ async def save_build_selection(selection_data: dict):
 
 @router.post("/migration/from-json")
 async def migrate_from_json():
-    """
-    Endpoint pour migrer depuis l'ancien système JSON
-    """
+    """Endpoint pour migrer depuis l'ancien système JSON"""
     try:
-        # Migrer depuis user_config.json
         config_path = "config/user_config.json"
         success = user_service.migrate_from_json_config(config_path)
         
