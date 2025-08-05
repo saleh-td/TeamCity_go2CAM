@@ -58,16 +58,39 @@ function fillAgentsModal() {
         return;
     }
     
-    container.innerHTML = currentAgents.map(agent => `
-        <div class="agent-card">
-            <div class="agent-name">${agent.name}</div>
-            <div class="agent-status ${agent.status}">
-                <span>●</span>
-                ${agent.status === 'online' ? 'En ligne' : agent.status === 'busy' ? 'Occupé' : 'Hors ligne'}
+    container.innerHTML = currentAgents.map(agent => {
+        // Mapper les statuts pour l'affichage
+        let statusClass, statusText;
+        switch (agent.status) {
+            case 'connected':
+                statusClass = 'online';
+                statusText = 'En ligne';
+                break;
+            case 'disconnected':
+                statusClass = 'offline';
+                statusText = 'Hors ligne';
+                break;
+            case 'busy':
+                statusClass = 'busy';
+                statusText = 'Occupé';
+                break;
+            default:
+                statusClass = 'unknown';
+                statusText = 'Inconnu';
+                break;
+        }
+        
+        return `
+            <div class="agent-card">
+                <div class="agent-name">${agent.name}</div>
+                <div class="agent-status ${statusClass}">
+                    <span>●</span>
+                    ${statusText}
+                </div>
+                ${agent.currentBuild ? `<div style="font-size: 11px; color: #7d8590; margin-top: 4px;">Build: ${agent.currentBuild}</div>` : ''}
             </div>
-            ${agent.currentBuild ? `<div style="font-size: 11px; color: #7d8590; margin-top: 4px;">Build: ${agent.currentBuild}</div>` : ''}
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function fillOverviewModal() {
@@ -83,15 +106,38 @@ function fillOverviewModal() {
     // Afficher les agents détaillés
     const agents = document.getElementById('overview-agents');
     const limitedAgents = currentAgents.slice(0, 6);
-    agents.innerHTML = limitedAgents.map(agent => `
-        <div class="agent-card">
-            <div class="agent-name">${agent.name}</div>
-            <div class="agent-status ${agent.status}">
-                <span>●</span>
-                ${agent.status === 'online' ? 'En ligne' : agent.status === 'busy' ? 'Occupé' : 'Hors ligne'}
+    agents.innerHTML = limitedAgents.map(agent => {
+        // Mapper les statuts pour l'affichage
+        let statusClass, statusText;
+        switch (agent.status) {
+            case 'connected':
+                statusClass = 'online';
+                statusText = 'En ligne';
+                break;
+            case 'disconnected':
+                statusClass = 'offline';
+                statusText = 'Hors ligne';
+                break;
+            case 'busy':
+                statusClass = 'busy';
+                statusText = 'Occupé';
+                break;
+            default:
+                statusClass = 'unknown';
+                statusText = 'Inconnu';
+                break;
+        }
+        
+        return `
+            <div class="agent-card">
+                <div class="agent-name">${agent.name}</div>
+                <div class="agent-status ${statusClass}">
+                    <span>●</span>
+                    ${statusText}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function getStatusClass(status, state) {
@@ -113,6 +159,18 @@ function getStatusText(status, state) {
 }
 
 function getDetailedStats() {
+    // Utiliser les stats de l'instance dashboard si disponible
+    if (window.dashboardInstance && window.dashboardInstance.apiStats) {
+        const apiStats = window.dashboardInstance.apiStats;
+        return {
+            success: apiStats.success,
+            failure: apiStats.failure,
+            running: apiStats.running,
+            other: Math.max(0, apiStats.total - apiStats.success - apiStats.failure - apiStats.running)
+        };
+    }
+    
+    // Fallback: calcul côté client
     return currentBuilds.reduce((acc, build) => {
         const status = build.status?.toUpperCase();
         const state = build.state?.toLowerCase();
@@ -185,6 +243,13 @@ class SimpleDashboard {
         try {
             this.allBuilds = data.builds || [];
             this.organizedProjects = data.projects || {};
+            // Stocker les statistiques de l'API
+            this.apiStats = {
+                success: data.success_count || 0,
+                failure: data.failure_count || 0,
+                running: data.running_count || 0,
+                total: data.total_builds || 0
+            };
             currentBuilds = this.allBuilds;
             this.organizeAndDisplayBuilds();
             this.updateStats();
@@ -459,7 +524,25 @@ class SimpleDashboard {
         // Générer un point voyant pour chaque agent
         currentAgents.forEach(agent => {
             const indicator = document.createElement('div');
-            indicator.className = `agent-indicator ${agent.status}`;
+            
+            // Mapper les statuts de l'API vers les classes CSS
+            let statusClass;
+            switch (agent.status) {
+                case 'connected':
+                    statusClass = 'online';
+                    break;
+                case 'disconnected':
+                    statusClass = 'offline';
+                    break;
+                case 'busy':
+                    statusClass = 'busy';
+                    break;
+                default:
+                    statusClass = 'unknown';
+                    break;
+            }
+            
+            indicator.className = `agent-indicator ${statusClass}`;
             indicator.setAttribute('data-agent-name', agent.name);
             indicator.title = `${agent.name} - ${this.getAgentStatusText(agent.status)}`;
             
@@ -472,10 +555,17 @@ class SimpleDashboard {
 
     getAgentStatusText(status) {
         switch (status) {
-            case 'online': return 'En ligne';
-            case 'offline': return 'Hors ligne';
-            case 'busy': return 'Occupé';
-            default: return 'Inconnu';
+            case 'connected':
+            case 'online': 
+                return 'En ligne';
+            case 'disconnected':
+            case 'offline': 
+                return 'Hors ligne';
+            case 'busy': 
+                return 'Occupé';
+            case 'unknown':
+            default: 
+                return 'Inconnu';
         }
     }
 
@@ -484,6 +574,17 @@ class SimpleDashboard {
     }
 
     getDetailedStats() {
+        // Utiliser les statistiques de l'API si disponibles, sinon calculer côté client
+        if (this.apiStats) {
+            return {
+                success: this.apiStats.success,
+                failure: this.apiStats.failure,
+                running: this.apiStats.running,
+                other: Math.max(0, this.apiStats.total - this.apiStats.success - this.apiStats.failure - this.apiStats.running)
+            };
+        }
+        
+        // Fallback: calcul côté client si pas de stats API
         return this.allBuilds.reduce((acc, build) => {
             const status = build.status?.toUpperCase();
             const state = build.state?.toLowerCase();

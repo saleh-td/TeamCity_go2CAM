@@ -185,6 +185,11 @@ body {
     animation: agentPulse 2s infinite;
 }
 
+.agent-indicator.disconnected {
+    background: #f85149;
+    box-shadow: 0 0 4px rgba(248, 81, 73, 0.4);
+}
+
 .agent-indicator.unknown {
     background: #7d8590;
     box-shadow: 0 0 4px rgba(125, 133, 144, 0.4);
