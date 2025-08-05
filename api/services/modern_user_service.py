@@ -34,6 +34,10 @@ class ModernUserService:
         """Récupère les IDs des builds sélectionnés"""
         return UserBuildSelection.get_selected_builds()
     
+    def get_build_info(self, build_type_id: str) -> Optional[Dict[str, Any]]:
+        """Récupère les informations d'un build depuis la base de données"""
+        return UserBuildSelection.get_build_info(build_type_id)
+    
     def update_build_selection(self, build_type_id: str, project_name: str, 
                              build_name: str, is_selected: bool) -> bool:
         """Met à jour la sélection d'un build"""

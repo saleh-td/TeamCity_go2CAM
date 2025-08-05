@@ -51,6 +51,21 @@ class UserBuildSelection:
             return []
     
     @staticmethod
+    def get_build_info(build_type_id: str) -> Optional[Dict[str, Any]]:
+        """Récupère les informations d'un build spécifique"""
+        try:
+            query = """
+            SELECT build_type_id, project_name, build_name, is_selected 
+            FROM user_build_selections 
+            WHERE build_type_id = %s
+            """
+            result = execute_query(query, (build_type_id,), fetch_one=True)
+            return dict(result) if result else None
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des infos du build {build_type_id}: {e}")
+            return None
+    
+    @staticmethod
     def update_selection(build_type_id: str, project_name: str, build_name: str, is_selected: bool) -> bool:
         """Met à jour ou insère une sélection"""
         try:

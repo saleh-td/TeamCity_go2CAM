@@ -83,12 +83,14 @@ async def get_builds_dashboard():
         
         builds_data = await get_teamcity_builds_direct()
         
+        # Filtrer selon la sélection utilisateur
         filtered_builds = [
             build for build in builds_data 
             if build.get("buildTypeId") in selected_builds
         ]
         
-        projects_organized = organize_builds_by_patterns(filtered_builds)
+        # Utiliser la nouvelle structure hiérarchique avec filtrage des projets archivés
+        projects_organized = create_complete_tree_structure(filtered_builds)
         
         running_count = len([b for b in filtered_builds if b.get("state") == "running"])
         success_count = len([b for b in filtered_builds if b.get("status") == "SUCCESS"])
@@ -376,6 +378,30 @@ async def get_configuration():
         logger.error(f"Erreur get_configuration: {str(e)}")
         return {"builds": {"selectedBuilds": []}}
 
+@router.get("/builds/tree/force-refresh")
+async def force_refresh_builds_tree():
+    """Force le rechargement de l'arbre des builds en vidant le cache"""
+    try:
+        # Vider le cache TeamCity
+        cache["teamcity_builds"] = None
+        cache["builds_timestamp"] = None
+        
+        # Recharger les données
+        builds_data = await get_teamcity_builds_direct()
+        selected_builds = user_service.get_selected_builds()
+        tree_structure = create_complete_tree_structure(builds_data)
+        
+        return {
+            "message": "Arbre des builds rechargé avec succès",
+            "projects": tree_structure,
+            "total_builds": len(builds_data),
+            "selected_builds": selected_builds
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur force_refresh_builds_tree: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur lors du rechargement de l'arbre")
+
 @router.get("/builds/tree")
 async def get_builds_tree():
     """Crée automatiquement la structure complète des projets TeamCity pour la page de configuration"""
@@ -406,8 +432,17 @@ async def get_builds_tree():
             "selected_builds": []
         }
 
+def detect_version_from_buildtype_id(build_type_id: str) -> str:
+    """Détecte la version GO2 à partir du buildTypeId"""
+    if "612" in build_type_id or "Go2Version612" in build_type_id:
+        return "GO2 Version 612"
+    elif "New" in build_type_id or "Go2VersionNew" in build_type_id or "InternalLibNew" in build_type_id:
+        return "GO2 Version New"
+    else:
+        return "GO2 Version New"  # Par défaut pour les nouveaux
+
 def create_complete_tree_structure(builds_data):
-    """Crée une structure arborescente complète basée sur projectName"""
+    """Crée une structure arborescente complète basée sur projectName avec reconstruction de hiérarchie"""
     tree = {}
     
     for build in builds_data:
@@ -417,70 +452,110 @@ def create_complete_tree_structure(builds_data):
         
         if not project_name or not build_type_id:
             continue
-            
+        
+        # Analyser le projectName pour déterminer la structure
         project_parts = [part.strip() for part in project_name.split("/")]
         
-        if len(project_parts) >= 2:
-            main_project = project_parts[0]
-            category = project_parts[1]
-            subcategory = project_parts[2] if len(project_parts) >= 3 else "General"
-            
-            if main_project not in tree:
-                tree[main_project] = {
-                    "name": main_project,
-                    "subprojects": {}
-                }
-            
-            if category not in tree[main_project]["subprojects"]:
-                tree[main_project]["subprojects"][category] = {
-                    "name": category,
-                    "subprojects": {}
-                }
-            
-            if subcategory not in tree[main_project]["subprojects"][category]["subprojects"]:
-                tree[main_project]["subprojects"][category]["subprojects"][subcategory] = {
-                    "name": subcategory,
-                    "builds": []
-                }
-            
-            tree[main_project]["subprojects"][category]["subprojects"][subcategory]["builds"].append({
-                "buildTypeId": build_type_id,
-                "name": name,
-                "projectName": project_name,
-                "webUrl": build.get("webUrl", ""),
-                "status": build.get("status", "UNKNOWN"),
-                "state": build.get("state", "finished")
-            })
+        main_project = None
+        category = None
+        subcategory = None
         
+        # CAS 1: Structure déjà complète avec version GO2
+        if any("GO2 Version" in part for part in project_parts):
+            # Structure: "GO2 Version 612 / Internal Executables"
+            for part in project_parts:
+                if "GO2 Version" in part:
+                    main_project = part
+                    break
+            
+            # La catégorie est la partie suivante
+            go2_index = None
+            for i, part in enumerate(project_parts):
+                if "GO2 Version" in part:
+                    go2_index = i
+                    break
+            
+            if go2_index is not None and go2_index + 1 < len(project_parts):
+                category = project_parts[go2_index + 1]
+            else:
+                category = "General"
+            
+            subcategory = "Builds"
+        
+        # CAS 2: Web Services - structure spéciale
+        elif any("Web Services" in part for part in project_parts):
+            main_project = "Web Services"
+            
+            if "<Root project>" in project_parts[0]:
+                category = "Root Services"
+                subcategory = "General"
+            else:
+                category = "Services"
+                # Trouver le service spécifique
+                service_candidates = [
+                    "Diagnosticor", "FileServer", "GO2Portal", "GObot", 
+                    "GSZ - PPFinder", "Legacy GO2Portal"
+                ]
+                subcategory = "General"
+                for part in project_parts:
+                    if part in service_candidates:
+                        subcategory = part
+                        break
+        
+        # CAS 3: GO2Portal - structure spéciale
+        elif any("GO2Portal" in part for part in project_parts):
+            main_project = "GO2Portal"
+            category = "Portal"
+            
+            portal_categories = ["Builds", "Synchro servers"]
+            subcategory = "General"
+            for part in project_parts:
+                if part in portal_categories:
+                    subcategory = part
+                    break
+        
+        # CAS 4: Structure incomplète - reconstituer avec buildTypeId
         else:
-            root_project = project_parts[0] if project_parts else "Divers"
+            # Détecter la version à partir du buildTypeId
+            detected_version = detect_version_from_buildtype_id(build_type_id)
+            main_project = detected_version
             
-            if root_project not in tree:
-                tree[root_project] = {
-                    "name": root_project,
-                    "subprojects": {}
-                }
+            # La première partie est la catégorie
+            category = project_parts[0] if project_parts else "General"
             
-            if "General" not in tree[root_project]["subprojects"]:
-                tree[root_project]["subprojects"]["General"] = {
-                    "name": "General", 
-                    "subprojects": {}
-                }
-            
-            if "Builds" not in tree[root_project]["subprojects"]["General"]["subprojects"]:
-                tree[root_project]["subprojects"]["General"]["subprojects"]["Builds"] = {
-                    "name": "Builds",
-                    "builds": []
-                }
-            
-            tree[root_project]["subprojects"]["General"]["subprojects"]["Builds"]["builds"].append({
-                "buildTypeId": build_type_id,
-                "name": name,
-                "projectName": project_name,
-                "webUrl": build.get("webUrl", ""),
-                "status": build.get("status", "UNKNOWN"),
-                "state": build.get("state", "finished")
-            })
+            # La deuxième partie est la sous-catégorie
+            subcategory = project_parts[1] if len(project_parts) > 1 else "Builds"
+        
+        # Construire l'arborescence avec la structure restaurée
+        if main_project not in tree:
+            tree[main_project] = {
+                "name": main_project,
+                "subprojects": {}
+            }
+        
+        if category not in tree[main_project]["subprojects"]:
+            tree[main_project]["subprojects"][category] = {
+                "name": category,
+                "subprojects": {}
+            }
+        
+        if subcategory not in tree[main_project]["subprojects"][category]["subprojects"]:
+            tree[main_project]["subprojects"][category]["subprojects"][subcategory] = {
+                "name": subcategory,
+                "builds": []
+            }
+        
+        # Ajouter le build
+        tree[main_project]["subprojects"][category]["subprojects"][subcategory]["builds"].append({
+            "buildTypeId": build_type_id,
+            "name": name,
+            "projectName": project_name,
+            "webUrl": build.get("webUrl", ""),
+            "status": build.get("status", "UNKNOWN"),
+            "state": build.get("state", "finished")
+        })
+    
+    return tree
     
     return tree
 

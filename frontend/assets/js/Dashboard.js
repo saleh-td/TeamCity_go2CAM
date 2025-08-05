@@ -308,8 +308,18 @@ class SimpleDashboard {
     flattenSubprojects(subprojects) {
         const flattened = {};
         
-        for (const [subprojectName, subprojectData] of Object.entries(subprojects)) {
-            flattened[subprojectName] = subprojectData.builds;
+        for (const [categoryName, categoryData] of Object.entries(subprojects)) {
+            // Nouvelle structure hiérarchique: category -> subcategories -> builds
+            if (categoryData.subprojects) {
+                // Structure à 3 niveaux: Product Install -> Meca -> builds
+                for (const [subcategoryName, subcategoryData] of Object.entries(categoryData.subprojects)) {
+                    const fullName = `${categoryName.toUpperCase()} / ${subcategoryName.toUpperCase()}`;
+                    flattened[fullName] = subcategoryData.builds || [];
+                }
+            } else if (categoryData.builds) {
+                // Structure à 2 niveaux: Services -> builds (fallback)
+                flattened[categoryName.toUpperCase()] = categoryData.builds;
+            }
         }
         
         return flattened;
@@ -338,7 +348,7 @@ class SimpleDashboard {
     }
 
     generateBuildHTML(build) {
-        const statusClass = getStatusClass(build.status, build.state);
+        const statusClass = this.getStatusClass(build.status, build.state);
         const buildName = this.extractReadableBuildName(build);
         
         return `
