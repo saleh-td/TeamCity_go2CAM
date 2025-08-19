@@ -5,8 +5,15 @@
 
 // Configuration de base
 const API_CONFIG = {
-    // URL de base de l'API
-    BASE_URL: 'http://localhost:8000',
+    // URL de base de l'API - détection automatique
+    BASE_URL: (() => {
+        // Si on accède via le serveur FastAPI (port 8000)
+        if (window.location.port === '8000') {
+            return window.location.origin;
+        }
+        // Si on accède directement aux fichiers (file://) ou autre port
+        return 'http://localhost:8000';
+    })(),
     
     // Endpoints disponibles
     ENDPOINTS: {

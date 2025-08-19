@@ -408,10 +408,13 @@ async def get_builds_tree():
     try:
         builds_data = await get_teamcity_builds_direct()
         
-        # Si pas de données TeamCity, utiliser des données de démonstration
         if not builds_data:
-            logger.warning("Aucune donnée TeamCity - utilisation de données de démonstration")
-            builds_data = get_demo_builds_data()
+            logger.warning("Aucune donnée TeamCity disponible")
+            return {
+                "projects": {},
+                "total_builds": 0,
+                "selected_builds": []
+            }
         
         selected_builds = user_service.get_selected_builds()
         tree_structure = create_complete_tree_structure(builds_data)
@@ -424,71 +427,27 @@ async def get_builds_tree():
         
     except Exception as e:
         logger.error(f"Erreur get_builds_tree: {str(e)}")
-        # En cas d'erreur, retourner des données de démonstration
-        builds_data = get_demo_builds_data()
-        tree_structure = create_complete_tree_structure(builds_data)
         return {
-            "projects": tree_structure,
-            "total_builds": len(builds_data),
+            "projects": {},
+            "total_builds": 0,
             "selected_builds": []
         }
 
-def get_demo_builds_data():
-    """Données de démonstration pour tester l'interface quand TeamCity n'est pas accessible"""
-    return [
-        {
-            "buildTypeId": "Go2Version612_ProductInstall_BuildDebug",
-            "name": "Build Debug",
-            "projectName": "GO2 Version 612 / Product Install",
-            "webUrl": "http://demo/viewType.html?buildTypeId=Go2Version612_ProductInstall_BuildDebug",
-            "status": "SUCCESS",
-            "state": "finished"
-        },
-        {
-            "buildTypeId": "Go2Version612_ProductInstall_BuildRelease",
-            "name": "Build Release",
-            "projectName": "GO2 Version 612 / Product Install",
-            "webUrl": "http://demo/viewType.html?buildTypeId=Go2Version612_ProductInstall_BuildRelease",
-            "status": "FAILURE",
-            "state": "finished"
-        },
-        {
-            "buildTypeId": "Go2VersionNew_ProductCompil_BuildDebug",
-            "name": "Build Debug",
-            "projectName": "GO2 Version New / Product Compilation",
-            "webUrl": "http://demo/viewType.html?buildTypeId=Go2VersionNew_ProductCompil_BuildDebug",
-            "status": "SUCCESS",
-            "state": "running"
-        },
-        {
-            "buildTypeId": "Go2VersionNew_ProductCompil_BuildRelease",
-            "name": "Build Release",
-            "projectName": "GO2 Version New / Product Compilation",
-            "webUrl": "http://demo/viewType.html?buildTypeId=Go2VersionNew_ProductCompil_BuildRelease",
-            "status": "SUCCESS",
-            "state": "finished"
-        },
-        {
-            "buildTypeId": "WebServices_GO2Portal_Deploy",
-            "name": "Deploy Portal",
-            "projectName": "Web Services / GO2Portal",
-            "webUrl": "http://demo/viewType.html?buildTypeId=WebServices_GO2Portal_Deploy",
-            "status": "SUCCESS",
-            "state": "finished"
-        }
-    ]
 
-def detect_version_from_buildtype_id(build_type_id: str) -> str:
-    """Détecte la version GO2 à partir du buildTypeId"""
-    if "612" in build_type_id or "Go2Version612" in build_type_id:
-        return "GO2 Version 612"
-    elif "New" in build_type_id or "Go2VersionNew" in build_type_id or "InternalLibNew" in build_type_id:
-        return "GO2 Version New"
-    else:
-        return "GO2 Version New"  # Par défaut pour les nouveaux
+def extract_main_project_from_path(project_path: str) -> str:
+    """Extrait le projet principal depuis le chemin complet TeamCity"""
+    if not project_path:
+        return "Autres"
+    
+    # Prendre la première partie du chemin comme projet principal
+    parts = [part.strip() for part in project_path.split("/")]
+    if parts:
+        return parts[0]
+    
+    return "Autres"
 
 def create_complete_tree_structure(builds_data):
-    """Crée une structure arborescente complète basée sur projectName avec reconstruction de hiérarchie"""
+    """Crée une structure arborescente dynamique basée sur la hiérarchie réelle TeamCity"""
     tree = {}
     
     for build in builds_data:
@@ -499,80 +458,32 @@ def create_complete_tree_structure(builds_data):
         if not project_name or not build_type_id:
             continue
         
-        # Analyser le projectName pour déterminer la structure
+        # Analyser le projectName pour créer une hiérarchie dynamique
         project_parts = [part.strip() for part in project_name.split("/")]
         
-        main_project = None
-        category = None
-        subcategory = None
-        
-        # CAS 1: Structure déjà complète avec version GO2
-        if any("GO2 Version" in part for part in project_parts):
-            # Structure: "GO2 Version 612 / Internal Executables"
-            for part in project_parts:
-                if "GO2 Version" in part:
-                    main_project = part
-                    break
-            
-            # La catégorie est la partie suivante
-            go2_index = None
-            for i, part in enumerate(project_parts):
-                if "GO2 Version" in part:
-                    go2_index = i
-                    break
-            
-            if go2_index is not None and go2_index + 1 < len(project_parts):
-                category = project_parts[go2_index + 1]
-            else:
-                category = "General"
-            
+        # Structure dynamique basée sur les vraies données TeamCity
+        if len(project_parts) >= 3:
+            # Structure complète: "Projet Principal / Catégorie / Sous-catégorie"
+            main_project = project_parts[0]
+            category = project_parts[1]
+            subcategory = project_parts[2]
+        elif len(project_parts) == 2:
+            # Structure: "Projet Principal / Catégorie"
+            main_project = project_parts[0]
+            category = project_parts[1]
+            subcategory = "Builds"
+        elif len(project_parts) == 1:
+            # Structure simple: "Projet Principal"
+            main_project = project_parts[0]
+            category = "General"
+            subcategory = "Builds"
+        else:
+            # Fallback pour cas exceptionnels
+            main_project = "Autres"
+            category = "Non classés"
             subcategory = "Builds"
         
-        # CAS 2: Web Services - structure spéciale
-        elif any("Web Services" in part for part in project_parts):
-            main_project = "Web Services"
-            
-            if "<Root project>" in project_parts[0]:
-                category = "Root Services"
-                subcategory = "General"
-            else:
-                category = "Services"
-                # Trouver le service spécifique
-                service_candidates = [
-                    "Diagnosticor", "FileServer", "GO2Portal", "GObot", 
-                    "GSZ - PPFinder", "Legacy GO2Portal"
-                ]
-                subcategory = "General"
-                for part in project_parts:
-                    if part in service_candidates:
-                        subcategory = part
-                        break
-        
-        # CAS 3: GO2Portal - structure spéciale
-        elif any("GO2Portal" in part for part in project_parts):
-            main_project = "GO2Portal"
-            category = "Portal"
-            
-            portal_categories = ["Builds", "Synchro servers"]
-            subcategory = "General"
-            for part in project_parts:
-                if part in portal_categories:
-                    subcategory = part
-                    break
-        
-        # CAS 4: Structure incomplète - reconstituer avec buildTypeId
-        else:
-            # Détecter la version à partir du buildTypeId
-            detected_version = detect_version_from_buildtype_id(build_type_id)
-            main_project = detected_version
-            
-            # La première partie est la catégorie
-            category = project_parts[0] if project_parts else "General"
-            
-            # La deuxième partie est la sous-catégorie
-            subcategory = project_parts[1] if len(project_parts) > 1 else "Builds"
-        
-        # Construire l'arborescence avec la structure restaurée
+        # Construire l'arborescence dynamiquement
         if main_project not in tree:
             tree[main_project] = {
                 "name": main_project,
@@ -600,8 +511,6 @@ def create_complete_tree_structure(builds_data):
             "status": build.get("status", "UNKNOWN"),
             "state": build.get("state", "finished")
         })
-    
-    return tree
     
     return tree
 
@@ -665,6 +574,64 @@ async def save_build_selection(selection_data: dict):
     except Exception as e:
         logger.error(f"Erreur save_build_selection: {str(e)}")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur")
+
+@router.get("/teamcity/test-connection")
+async def test_teamcity_connection():
+    """Teste la connexion à TeamCity et retourne des informations de diagnostic"""
+    from ..services.teamcity_fetcher import _is_teamcity_configured, _make_teamcity_request, TEAMCITY_URL, TEAMCITY_TOKEN
+    
+    try:
+        # Vérifier la configuration
+        if not _is_teamcity_configured():
+            return {
+                "status": "error",
+                "message": "TeamCity non configuré",
+                "details": {
+                    "url": TEAMCITY_URL,
+                    "token_configured": bool(TEAMCITY_TOKEN),
+                    "token_length": len(TEAMCITY_TOKEN) if TEAMCITY_TOKEN else 0
+                }
+            }
+        
+        # Test de connexion simple
+        test_url = f"{TEAMCITY_URL}/app/rest/buildTypes?locator=count:1"
+        root = _make_teamcity_request(test_url)
+        
+        if root.tag == 'root' and len(root) == 0:
+            return {
+                "status": "error",
+                "message": "Connexion TeamCity échouée",
+                "details": {
+                    "url": TEAMCITY_URL,
+                    "possible_causes": [
+                        "Serveur TeamCity inaccessible",
+                        "Token invalide ou expiré", 
+                        "Problème de réseau/firewall",
+                        "URL incorrecte"
+                    ]
+                }
+            }
+        
+        # Compter les buildTypes récupérés
+        buildtypes = root.findall('buildType')
+        
+        return {
+            "status": "success",
+            "message": "Connexion TeamCity OK",
+            "details": {
+                "url": TEAMCITY_URL,
+                "buildtypes_found": len(buildtypes),
+                "sample_buildtype": buildtypes[0].attrib.get('name', '') if buildtypes else None
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur test connexion TeamCity: {str(e)}")
+        return {
+            "status": "error", 
+            "message": f"Erreur lors du test: {str(e)}",
+            "details": {"url": TEAMCITY_URL}
+        }
 
 @router.post("/migration/from-json")
 async def migrate_from_json():

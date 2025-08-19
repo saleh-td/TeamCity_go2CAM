@@ -23,40 +23,55 @@ def _get_headers():
 
 def _is_teamcity_configured():
     """Vérifie si TeamCity est configuré"""
-    return TEAMCITY_TOKEN and TEAMCITY_URL != 'http://localhost:8111'
+    configured = TEAMCITY_TOKEN and TEAMCITY_URL != 'http://localhost:8111'
+    if not configured:
+        logger.warning(f"TeamCity non configuré - URL: {TEAMCITY_URL}, Token: {'✓' if TEAMCITY_TOKEN else '✗'}")
+    return configured
 
-def is_project_active(project_name: str) -> bool:
+def is_project_active(project_name: str, project_archived: bool = False, parent_archived: bool = False) -> bool:
     """
     Détermine si un projet est actif (non-archivé)
-    Filtre automatiquement les versions archivées basé sur l'analyse intelligente
+    Utilise d'abord les attributs 'archived' de l'API TeamCity, puis fallback sur patterns
     """
-    # Patterns des versions archivées détectées automatiquement
+    # Priorité 1: Utiliser les attributs 'archived' de l'API TeamCity
+    if project_archived or parent_archived:
+        logger.debug(f"Projet archivé exclu via API: {project_name}")
+        return False
+    
+    # Priorité 2: Fallback sur patterns pour anciennes versions TeamCity
     archived_patterns = [
         'GO2 Version 6.09',
         'GO2 Version 6.10', 
         'GO2 Version 6.11',
-        # Ajouter ici d'autres patterns archivés détectés dans le futur
     ]
     
-    # Exclure les versions archivées
     for pattern in archived_patterns:
         if pattern in project_name:
-            logger.debug(f"Projet archivé exclu: {project_name}")
+            logger.debug(f"Projet archivé exclu via pattern: {project_name}")
             return False
     
-    # Inclure tous les autres projets (actifs et futurs)
     return True
 
 def _make_teamcity_request(url: str) -> ET.Element:
     """Effectue une requête TeamCity et retourne l'élément racine XML"""
     if not _is_teamcity_configured():
-        logger.warning("TeamCity non configuré")
         return ET.Element('root')
     
     try:
-        response = requests.get(url, headers=_get_headers(), timeout=10)
+        logger.debug(f"Requête TeamCity: {url}")
+        response = requests.get(url, headers=_get_headers(), timeout=30)
         response.raise_for_status()
+        logger.debug(f"Réponse TeamCity OK: {response.status_code}")
         return ET.fromstring(response.text)
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Erreur de connexion TeamCity ({TEAMCITY_URL}): {e}")
+        return ET.Element('root')
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Timeout TeamCity ({TEAMCITY_URL}): {e}")
+        return ET.Element('root')
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Erreur HTTP TeamCity: {e} - Vérifiez le token")
+        return ET.Element('root')
     except Exception as e:
         logger.error(f"Erreur requête TeamCity: {e}")
         return ET.Element('root')
@@ -153,13 +168,8 @@ def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
             project_archived_attr = False
             parent_archived_attr = False
         
-        # FILTRAGE INTELLIGENT: Exclure les projets archivés (priorité aux attributs API)
-        is_archived_via_attr = project_archived_attr or parent_archived_attr
-        if is_archived_via_attr:
-            filtered_count += 1
-            continue
-        # Fallback sur détection par pattern si l'attribut n'est pas disponible et que le chemin suggère une ancienne version
-        if not is_archived_via_attr and not is_project_active(full_project_path):
+        # FILTRAGE INTELLIGENT: Exclure les projets archivés
+        if not is_project_active(full_project_path, project_archived_attr, parent_archived_attr):
             filtered_count += 1
             continue
         
