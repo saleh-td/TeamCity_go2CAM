@@ -66,7 +66,7 @@ def start_server():
             sys.executable, "-m", "uvicorn", 
             "api.main:app", 
             "--reload", 
-            "--host", "0.0.0.0", 
+            "--host", "127.0.0.1", 
             "--port", "8000"
         ], cwd=os.path.dirname(__file__))
         

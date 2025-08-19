@@ -6,7 +6,7 @@
 // Configuration de base
 const API_CONFIG = {
     // URL de base de l'API
-    BASE_URL: window.location.protocol + '//' + window.location.hostname + ':8000',
+    BASE_URL: 'http://localhost:8000',
     
     // Endpoints disponibles
     ENDPOINTS: {
