@@ -112,7 +112,14 @@ def fetch_latest_build_status(build_type_id: str) -> Dict[str, str]:
 
 def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
     """Récupère tous les buildTypes TeamCity (configurations de builds) actifs uniquement"""
-    url = f"{TEAMCITY_URL}/app/rest/buildTypes?fields=buildType(id,name,projectName,project(id,name,parentProjectId,parentProject(name)))"
+    # Inclure les attributs archived si disponibles pour filtrer dynamiquement
+    url = (
+        f"{TEAMCITY_URL}/app/rest/buildTypes?"
+        "fields=buildType("
+        "id,name,projectName,"
+        "project(id,name,parentProjectId,archived,parentProject(name,archived))"
+        ")"
+    )
     
     root = _make_teamcity_request(url)
     builds = []
@@ -125,11 +132,13 @@ def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
         project_elem = buildtype_elem.find('project')
         if project_elem is not None:
             project_name = project_elem.attrib.get('name', '')
+            project_archived_attr = project_elem.attrib.get('archived', 'false') == 'true'
             
             # Récupérer l'info sur le projet parent pour une hiérarchie complète
             parent_project_elem = project_elem.find('parentProject')
             if parent_project_elem is not None:
                 parent_project_name = parent_project_elem.attrib.get('name', '')
+                parent_archived_attr = parent_project_elem.attrib.get('archived', 'false') == 'true'
                 # Construire le chemin complet de la hiérarchie
                 if parent_project_name and parent_project_name != project_name:
                     full_project_path = f"{parent_project_name} / {project_name}"
@@ -137,12 +146,20 @@ def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
                     full_project_path = project_name
             else:
                 full_project_path = project_name
+                parent_archived_attr = False
         else:
             project_name = ''
             full_project_path = ''
+            project_archived_attr = False
+            parent_archived_attr = False
         
-        # FILTRAGE INTELLIGENT: Exclure les projets archivés
-        if not is_project_active(full_project_path):
+        # FILTRAGE INTELLIGENT: Exclure les projets archivés (priorité aux attributs API)
+        is_archived_via_attr = project_archived_attr or parent_archived_attr
+        if is_archived_via_attr:
+            filtered_count += 1
+            continue
+        # Fallback sur détection par pattern si l'attribut n'est pas disponible et que le chemin suggère une ancienne version
+        if not is_archived_via_attr and not is_project_active(full_project_path):
             filtered_count += 1
             continue
         
