@@ -25,8 +25,8 @@ class ModernUserService:
             UserPreferences.create_table()
             logger.info("Tables utilisateur initialisées avec succès")
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation des tables: {e}")
-            raise
+            # Ne pas interrompre l'application si la DB est indisponible
+            logger.error(f"Erreur lors de l'initialisation des tables (mode dégradé): {e}")
     
     # === GESTION DES SÉLECTIONS DE BUILDS ===
     
