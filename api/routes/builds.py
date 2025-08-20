@@ -626,6 +626,7 @@ async def save_build_selection(selection_data: dict):
         if not isinstance(selected_builds, list):
             raise HTTPException(status_code=400, detail="selectedBuilds doit être une liste")
         
+        # Récupérer les builds TeamCity; si vide, le modèle créera un fallback pour ne pas perdre la sélection
         all_builds = await get_teamcity_builds_direct()
         success = user_service.bulk_update_selections(selected_builds, all_builds)
         

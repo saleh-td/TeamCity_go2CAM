@@ -20,7 +20,10 @@ async function loadBuildsTree() {
         if (response.ok) {
             const result = await response.json();
             buildsTree = result;
-            selectedBuilds = result.selected_builds || [];
+            // Ne pas écraser une sélection déjà chargée (depuis /api/config ou localStorage)
+            if ((!selectedBuilds || selectedBuilds.length === 0) && Array.isArray(result.selected_builds) && result.selected_builds.length > 0) {
+                selectedBuilds = result.selected_builds;
+            }
             
             // Ne pas filtrer <Root project> car maintenant on a la hiérarchie complète
             console.log('Arborescence chargée:', buildsTree);
@@ -556,12 +559,34 @@ function showAutoSaveIndicator() {
 async function loadConfiguration() {
     try {
         // Charger la sélection des builds depuis l'API backend
-        const response = await fetch('http://localhost:8000/api/builds/tree');
+        const response = await fetch('http://localhost:8000/api/config');
         if (response.ok) {
             const result = await response.json();
             
-            // Charger les builds sélectionnés
-            selectedBuilds = result.selected_builds || [];
+            // Charger les builds sélectionnés (compat différents formats)
+            let fromApi = (result && (
+                (Array.isArray(result.selectedBuilds) && result.selectedBuilds)
+                || (result.builds && Array.isArray(result.builds.selectedBuilds) && result.builds.selectedBuilds)
+                || (Array.isArray(result.selected_builds) && result.selected_builds)
+            )) || [];
+
+            // Si backend renvoie vide, tenter fallback localStorage pour ne pas perdre l'état UI
+            if ((!fromApi || fromApi.length === 0)) {
+                try {
+                    const saved = localStorage.getItem('teamcity-monitor-builds');
+                    if (saved) {
+                        const fromLocal = JSON.parse(saved);
+                        if (Array.isArray(fromLocal) && fromLocal.length > 0) {
+                            fromApi = fromLocal;
+                            console.log('Fallback: builds sélectionnés chargés depuis localStorage (backend vide)');
+                        }
+                    }
+                } catch (e) {
+                    // ignorer
+                }
+            }
+
+            selectedBuilds = fromApi;
             console.log('Builds sélectionnés chargés depuis backend:', selectedBuilds);
             return;
         }
