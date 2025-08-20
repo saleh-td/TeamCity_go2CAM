@@ -789,9 +789,9 @@ body {
     color: #f0f6fc;
 }
 
-/* === TITRES DES ZONES PRINCIPALES (GO2 Version 612, GO2 Version New) === */
+/* === TITRES DES ZONES PRINCIPALES === */
 /* MODIFIER ICI : font-size pour changer la taille des titres principaux */
-#title-612, #title-new, #title-project3 {
+.project-title, .main-project-title {
     font-size: 28px !important; /* TAILLE DES TITRES PRINCIPAUX - MODIFIER ICI */
     font-weight: 700 !important;
     color: #f0f6fc !important;

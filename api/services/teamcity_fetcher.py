@@ -23,7 +23,7 @@ def _get_headers():
 
 def _is_teamcity_configured():
     """Vérifie si TeamCity est configuré"""
-    configured = TEAMCITY_TOKEN and TEAMCITY_URL != 'http://localhost:8111'
+    configured = bool(TEAMCITY_TOKEN and TEAMCITY_URL)
     if not configured:
         logger.warning(f"TeamCity non configuré - URL: {TEAMCITY_URL}, Token: {'✓' if TEAMCITY_TOKEN else '✗'}")
     return configured
@@ -31,25 +31,14 @@ def _is_teamcity_configured():
 def is_project_active(project_name: str, project_archived: bool = False, parent_archived: bool = False) -> bool:
     """
     Détermine si un projet est actif (non-archivé)
-    Utilise d'abord les attributs 'archived' de l'API TeamCity, puis fallback sur patterns
+    Utilise UNIQUEMENT les attributs 'archived' de l'API TeamCity - 100% générique
     """
-    # Priorité 1: Utiliser les attributs 'archived' de l'API TeamCity
+    # Utiliser UNIQUEMENT les attributs 'archived' de l'API TeamCity
     if project_archived or parent_archived:
         logger.debug(f"Projet archivé exclu via API: {project_name}")
         return False
     
-    # Priorité 2: Fallback sur patterns pour anciennes versions TeamCity
-    archived_patterns = [
-        'GO2 Version 6.09',
-        'GO2 Version 6.10', 
-        'GO2 Version 6.11',
-    ]
-    
-    for pattern in archived_patterns:
-        if pattern in project_name:
-            logger.debug(f"Projet archivé exclu via pattern: {project_name}")
-            return False
-    
+    # Tous les autres projets sont considérés comme actifs
     return True
 
 def _make_teamcity_request(url: str) -> ET.Element:
