@@ -200,9 +200,9 @@ class SimpleDashboard {
     async init() {
         try {
             const [configResponse, buildsResponse, agentsResponse] = await Promise.all([
-                fetch('http://localhost:8000/api/config'),
-                fetch('http://localhost:8000/api/builds/dashboard'),
-                fetch('http://localhost:8000/api/agents')
+                apiRequest(buildApiUrl('CONFIG')),
+                apiRequest(buildApiUrl('BUILDS_DASHBOARD')),
+                apiRequest(buildApiUrl('AGENTS'))
             ]);
             
             const [configData, buildsData, agentsData] = await Promise.all([
@@ -261,7 +261,7 @@ class SimpleDashboard {
 
     async loadAndDisplayBuilds() {
         try {
-            const response = await fetch('http://localhost:8000/api/builds/dashboard');
+            const response = await apiRequest(buildApiUrl('BUILDS_DASHBOARD'));
             const data = await response.json();
             this.processBuilds(data);
         } catch (error) {
@@ -452,7 +452,7 @@ class SimpleDashboard {
 
     async loadAndDisplayAgents() {
         try {
-            const response = await fetch('http://localhost:8000/api/agents');
+            const response = await apiRequest(buildApiUrl('AGENTS'));
             const data = await response.json();
             this.processAgents(data);
         } catch (error) {
@@ -468,9 +468,9 @@ class SimpleDashboard {
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
                 
                 const [configResponse, buildsResponse, agentsResponse] = await Promise.all([
-                    fetch('http://localhost:8000/api/config', { signal: controller.signal }),
-                    fetch('http://localhost:8000/api/builds/dashboard', { signal: controller.signal }),
-                    fetch('http://localhost:8000/api/agents', { signal: controller.signal })
+                    apiRequest(buildApiUrl('CONFIG'), { signal: controller.signal }),
+                    apiRequest(buildApiUrl('BUILDS_DASHBOARD'), { signal: controller.signal }),
+                    apiRequest(buildApiUrl('AGENTS'), { signal: controller.signal })
                 ]);
                 
                 clearTimeout(timeoutId);

@@ -88,7 +88,14 @@ class UserBuildSelection:
                 return UserBuildSelection._read_file_fallback()
             query = "SELECT build_type_id FROM user_build_selections WHERE is_selected = TRUE"
             results = execute_query(query)
-            return [row['build_type_id'] for row in results]
+            selected = [row['build_type_id'] for row in results]
+            # Si la base est accessible mais ne contient rien, tenter le fallback fichier
+            if not selected:
+                file_selected = UserBuildSelection._read_file_fallback()
+                if file_selected:
+                    logger.info("Lecture des sélections via fallback fichier (DB vide)")
+                    return file_selected
+            return selected
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des builds sélectionnés: {e}")
             # Essayer fallback fichier
@@ -187,6 +194,8 @@ class UserBuildSelection:
                         build_id in selected_build_ids
                     )
             
+            # Toujours écrire un fallback fichier pour robustesse et lecture rapide côté dashboard
+            UserBuildSelection._write_file_fallback(selected_build_ids)
             logger.info(f"Mise à jour en lot réussie: {len(selected_build_ids)} builds sélectionnés")
             return True
         except Exception as e:

@@ -16,7 +16,7 @@ function goBackToDashboard() {
 
 async function loadBuildsTree() {
     try {
-        const response = await fetch('http://localhost:8000/api/builds/tree');
+        const response = await apiRequest(buildApiUrl('BUILDS_TREE'));
         if (response.ok) {
             const result = await response.json();
             buildsTree = result;
@@ -497,7 +497,7 @@ async function autoSaveConfiguration() {
             }
         });
         
-        const response = await fetch('http://localhost:8000/api/builds/tree/selection', {
+        const response = await apiRequest(buildApiUrl('BUILDS_SELECTION'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -559,7 +559,7 @@ function showAutoSaveIndicator() {
 async function loadConfiguration() {
     try {
         // Charger la sélection des builds depuis l'API backend
-        const response = await fetch('http://localhost:8000/api/config');
+        const response = await apiRequest(buildApiUrl('CONFIG'));
         if (response.ok) {
             const result = await response.json();
             

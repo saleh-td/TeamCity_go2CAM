@@ -168,6 +168,13 @@ cp env.example .env
 python start_server.py
 ```
 
+## 🧪 Tests
+
+```bash
+pip install -r requirements.txt
+pytest -q
+```
+
 ## 📈 **Avantages**
 
 - ✅ **100% générique** - fonctionne avec tout TeamCity

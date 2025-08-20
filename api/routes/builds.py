@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from ..services.teamcity_fetcher import fetch_teamcity_agents, fetch_all_teamcity_builds
+from ..services.teamcity_fetcher import fetch_teamcity_agents, fetch_all_teamcity_builds, enrich_builds_with_status
 from ..services.modern_user_service import user_service
 import logging
 import os
 import re
 from datetime import datetime, timedelta
 from typing import Dict, Any
+from fastapi import Response
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -96,6 +97,9 @@ async def get_builds_dashboard(demo: bool = False):
             build for build in builds_data 
             if build.get("buildTypeId") in selected_builds
         ]
+
+        # Enrichir UNIQUEMENT les builds sélectionnés avec leur statut pour performance
+        filtered_builds = await run_in_threadpool(enrich_builds_with_status, filtered_builds)
         
         if not filtered_builds and not demo:
             return {

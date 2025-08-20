@@ -3,6 +3,7 @@ import requests
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import re
 
@@ -48,7 +49,7 @@ def _make_teamcity_request(url: str) -> ET.Element:
     
     try:
         logger.debug(f"Requête TeamCity: {url}")
-        response = requests.get(url, headers=_get_headers(), timeout=5)  # Timeout réduit à 5s
+        response = requests.get(url, headers=_get_headers(), timeout=3)  # Timeout réduit à 3s pour accélérer
         response.raise_for_status()
         logger.debug(f"Réponse TeamCity OK: {response.status_code}")
         return ET.fromstring(response.text)
@@ -114,9 +115,40 @@ def fetch_latest_build_status(build_type_id: str) -> Dict[str, str]:
             'webUrl': f"{TEAMCITY_URL}/viewType.html?buildTypeId={build_type_id}"
         }
 
+def _build_projects_map() -> Dict[str, Dict[str, Any]]:
+    """Construit une map id -> {name, parentProjectId} pour tous les projets"""
+    projects = fetch_all_teamcity_projects()
+    return {p['id']: {'name': p['name'], 'parentProjectId': p.get('parentProjectId', '')} for p in projects}
+
+
+def _compute_full_project_path(project_id: str, projects_map: Dict[str, Dict[str, Any]]) -> str:
+    """Reconstruit tout le chemin du projet en remontant la chaîne des parents.
+    Ignore les noms vides et les marqueurs racine de TeamCity (ex: <Root project>)."""
+    if not project_id:
+        return ''
+    names: List[str] = []
+    visited: set = set()
+    current_id = project_id
+    while current_id and current_id not in visited:
+        visited.add(current_id)
+        meta = projects_map.get(current_id)
+        if not meta:
+            break
+        name = meta.get('name') or ''
+        if name and name.lower() not in {'<root project>'.lower(), 'root', 'projects'}:
+            names.append(name)
+        current_id = meta.get('parentProjectId')
+    names.reverse()
+    return ' / '.join(names)
+
+
 def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
-    """Récupère tous les buildTypes TeamCity (configurations de builds) actifs uniquement"""
-    # Inclure les attributs archived si disponibles pour filtrer dynamiquement
+    """Récupère tous les buildTypes TeamCity (configurations de builds) actifs uniquement, SANS statut pour rapidité.
+    Le statut est enrichi ensuite uniquement pour les builds nécessaires (ex: sélectionnés dans le dashboard)."""
+    # Charger la map des projets pour reconstruire le chemin complet
+    projects_map = _build_projects_map()
+
+    # Récupérer les buildTypes avec métadonnées de projet (id + parentProjectId)
     url = (
         f"{TEAMCITY_URL}/app/rest/buildTypes?"
         "fields=buildType("
@@ -124,64 +156,73 @@ def fetch_all_teamcity_builds() -> List[Dict[str, Any]]:
         "project(id,name,parentProjectId,archived,parentProject(name,archived))"
         ")"
     )
-    
+
     root = _make_teamcity_request(url)
-    builds = []
+    builds: List[Dict[str, Any]] = []
     filtered_count = 0
-    
+
     for buildtype_elem in root.findall('buildType'):
         buildtype_id = buildtype_elem.attrib.get('id', '')
         buildtype_name = buildtype_elem.attrib.get('name', '')
-        
+
         project_elem = buildtype_elem.find('project')
         if project_elem is not None:
-            project_name = project_elem.attrib.get('name', '')
+            project_id = project_elem.attrib.get('id', '')
             project_archived_attr = project_elem.attrib.get('archived', 'false') == 'true'
-            
-            # Récupérer l'info sur le projet parent pour une hiérarchie complète
+
+            # Statut d'archivage du parent immédiat (si exposé)
             parent_project_elem = project_elem.find('parentProject')
-            if parent_project_elem is not None:
-                parent_project_name = parent_project_elem.attrib.get('name', '')
-                parent_archived_attr = parent_project_elem.attrib.get('archived', 'false') == 'true'
-                # Construire le chemin complet de la hiérarchie
-                if parent_project_name and parent_project_name != project_name:
-                    full_project_path = f"{parent_project_name} / {project_name}"
-                else:
-                    full_project_path = project_name
-            else:
-                full_project_path = project_name
-                parent_archived_attr = False
+            parent_archived_attr = (
+                parent_project_elem is not None and parent_project_elem.attrib.get('archived', 'false') == 'true'
+            )
+
+            # Chemin complet en remontant toute la chaîne des parents
+            full_project_path = _compute_full_project_path(project_id, projects_map)
         else:
-            project_name = ''
-            full_project_path = ''
             project_archived_attr = False
             parent_archived_attr = False
-        
-        # FILTRAGE INTELLIGENT: Exclure les projets archivés
+            full_project_path = ''
+
+        # Exclure projets archivés
         if not is_project_active(full_project_path, project_archived_attr, parent_archived_attr):
             filtered_count += 1
             continue
-        
-        build_data = {
+
+        builds.append({
             'id': buildtype_id,
             'buildTypeId': buildtype_id,
             'name': buildtype_name,
-            'projectName': full_project_path,  # Utiliser le chemin complet pour la hiérarchie
+            'projectName': full_project_path,
             'webUrl': f"{TEAMCITY_URL}/viewType.html?buildTypeId={buildtype_id}",
-            'status': 'UNKNOWN',  # Sera mis à jour avec le vrai statut
+            'status': 'UNKNOWN',
             'state': 'finished',
             'number': ''
-        }
-        
-        # Récupérer le statut du dernier build exécuté pour ce buildType
-        last_build_status = fetch_latest_build_status(buildtype_id)
-        if last_build_status:
-            build_data.update(last_build_status)
-        
-        builds.append(build_data)
-    
-    logger.info(f"Builds récupérés: {len(builds)} actifs, {filtered_count} archivés filtrés")
+        })
+
+    logger.info(f"Builds récupérés (sans statuts): {len(builds)} actifs, {filtered_count} archivés filtrés")
     return builds
+
+
+def enrich_builds_with_status(builds: List[Dict[str, Any]], max_workers: int = 12) -> List[Dict[str, Any]]:
+    """Enrichit en parallèle une liste de builds avec leur statut récent.
+    Ne fait des appels TeamCity que pour ces builds, pour de meilleures performances."""
+    if not builds:
+        return builds
+    results: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_build = {executor.submit(fetch_latest_build_status, b.get('buildTypeId', '')): b for b in builds}
+        for future in as_completed(future_to_build):
+            base = future_to_build[future]
+            try:
+                status = future.result()
+                enriched = {**base, **(status or {})}
+            except Exception:
+                enriched = base
+            results.append(enriched)
+    # Conserver l'ordre d'origine si nécessaire
+    id_to_enriched = {b['buildTypeId']: b for b in results if b.get('buildTypeId')}
+    ordered = [id_to_enriched.get(b.get('buildTypeId'), b) for b in builds]
+    return ordered
 
 def fetch_all_teamcity_projects() -> List[Dict[str, Any]]:
     """Récupère tous les projets TeamCity"""
