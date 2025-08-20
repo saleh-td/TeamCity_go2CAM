@@ -9,10 +9,51 @@ import json
 from typing import List, Dict, Any, Optional
 import logging
 from ..database.config import get_db_connection, execute_query, execute_update
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class UserBuildSelection:
+    FILE_FALLBACK_PATH = Path("config/selected_builds.json")
+
+    @staticmethod
+    def _is_db_available() -> bool:
+        try:
+            conn = get_db_connection()
+            if conn is None:
+                return False
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _read_file_fallback() -> List[str]:
+        try:
+            if UserBuildSelection.FILE_FALLBACK_PATH.exists():
+                with open(UserBuildSelection.FILE_FALLBACK_PATH, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and isinstance(data.get('selectedBuilds'), list):
+                        return data['selectedBuilds']
+                    if isinstance(data, list):
+                        return data
+        except Exception as e:
+            logger.error(f"Erreur lecture fallback fichier sélection: {e}")
+        return []
+
+    @staticmethod
+    def _write_file_fallback(selected_build_ids: List[str]) -> bool:
+        try:
+            UserBuildSelection.FILE_FALLBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(UserBuildSelection.FILE_FALLBACK_PATH, 'w', encoding='utf-8') as f:
+                json.dump({"selectedBuilds": selected_build_ids}, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Erreur écriture fallback fichier sélection: {e}")
+            return False
     """
     Modèle moderne pour stocker les sélections de builds utilisateur
     Remplace user_config.json hardcodé - Compatible MySQL
@@ -43,12 +84,15 @@ class UserBuildSelection:
     def get_selected_builds() -> List[str]:
         """Récupère tous les builds sélectionnés"""
         try:
+            if not UserBuildSelection._is_db_available():
+                return UserBuildSelection._read_file_fallback()
             query = "SELECT build_type_id FROM user_build_selections WHERE is_selected = TRUE"
             results = execute_query(query)
             return [row['build_type_id'] for row in results]
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des builds sélectionnés: {e}")
-            return []
+            # Essayer fallback fichier
+            return UserBuildSelection._read_file_fallback()
     
     @staticmethod
     def get_build_info(build_type_id: str) -> Optional[Dict[str, Any]]:
@@ -69,6 +113,14 @@ class UserBuildSelection:
     def update_selection(build_type_id: str, project_name: str, build_name: str, is_selected: bool) -> bool:
         """Met à jour ou insère une sélection"""
         try:
+            if not UserBuildSelection._is_db_available():
+                # Mettre à jour via fichier fallback
+                current = set(UserBuildSelection._read_file_fallback())
+                if is_selected:
+                    current.add(build_type_id)
+                else:
+                    current.discard(build_type_id)
+                return UserBuildSelection._write_file_fallback(sorted(current))
             # Vérifier si existe
             check_query = "SELECT build_type_id FROM user_build_selections WHERE build_type_id = %s"
             existing = execute_query(check_query, (build_type_id,), fetch_one=True)
@@ -92,12 +144,35 @@ class UserBuildSelection:
             return True
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la sélection: {e}")
-            return False
+            # Fallback fichier
+            try:
+                current = set(UserBuildSelection._read_file_fallback())
+                if is_selected:
+                    current.add(build_type_id)
+                else:
+                    current.discard(build_type_id)
+                return UserBuildSelection._write_file_fallback(sorted(current))
+            except Exception:
+                return False
     
     @staticmethod
     def bulk_update_selections(selected_build_ids: List[str], all_builds: List[Dict[str, Any]]) -> bool:
         """Met à jour toutes les sélections en une fois"""
         try:
+            if not UserBuildSelection._is_db_available():
+                return UserBuildSelection._write_file_fallback(selected_build_ids)
+            # Fallback: si aucune liste de builds complète n'est disponible (TeamCity hors ligne),
+            # créer une liste artificielle à partir des IDs sélectionnés pour ne pas perdre la sélection.
+            if not all_builds:
+                all_builds = [
+                    {
+                        "buildTypeId": build_id,
+                        "projectName": "Unknown",
+                        "name": build_id
+                    }
+                    for build_id in selected_build_ids
+                ]
+
             # Supprimer toutes les anciennes sélections
             execute_update("DELETE FROM user_build_selections")
             
@@ -116,7 +191,8 @@ class UserBuildSelection:
             return True
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour en lot: {e}")
-            return False
+            # Fallback fichier
+            return UserBuildSelection._write_file_fallback(selected_build_ids)
     
     @staticmethod
     def clear_all_selections() -> bool:
