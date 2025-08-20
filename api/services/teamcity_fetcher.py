@@ -48,7 +48,7 @@ def _make_teamcity_request(url: str) -> ET.Element:
     
     try:
         logger.debug(f"Requête TeamCity: {url}")
-        response = requests.get(url, headers=_get_headers(), timeout=30)
+        response = requests.get(url, headers=_get_headers(), timeout=5)  # Timeout réduit à 5s
         response.raise_for_status()
         logger.debug(f"Réponse TeamCity OK: {response.status_code}")
         return ET.fromstring(response.text)

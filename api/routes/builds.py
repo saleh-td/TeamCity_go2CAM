@@ -16,7 +16,7 @@ cache: Dict[str, Any] = {
     "teamcity_agents": None,
     "builds_timestamp": None,
     "agents_timestamp": None,
-    "ttl": timedelta(minutes=5)
+    "ttl": timedelta(minutes=10)  # Cache plus long pour éviter les appels répétés
 }
 
 
@@ -67,9 +67,18 @@ async def get_builds_classified():
         }
 
 @router.get("/builds/dashboard")
-async def get_builds_dashboard():
+async def get_builds_dashboard(demo: bool = False):
     try:
         selected_builds = user_service.get_selected_builds()
+        
+        if demo:
+            # Mode démo pour tester l'affichage
+            builds_data = get_demo_builds_for_testing()
+            # Simuler quelques builds sélectionnés
+            if not selected_builds:
+                selected_builds = ["Go2Version612_Plugins_BuildDebug", "WebServices_Portal_Deploy"]
+        else:
+            builds_data = await get_teamcity_builds_direct()
         
         if not selected_builds:
             return {
@@ -78,10 +87,9 @@ async def get_builds_dashboard():
                 "total_builds": 0,
                 "running_count": 0,
                 "success_count": 0,
-                "failure_count": 0
+                "failure_count": 0,
+                "message": "Aucun build sélectionné - allez dans la configuration pour en choisir"
             }
-        
-        builds_data = await get_teamcity_builds_direct()
         
         # Filtrer selon la sélection utilisateur
         filtered_builds = [
@@ -89,7 +97,18 @@ async def get_builds_dashboard():
             if build.get("buildTypeId") in selected_builds
         ]
         
-        # Utiliser la nouvelle structure hiérarchique avec filtrage des projets archivés
+        if not filtered_builds and not demo:
+            return {
+                "builds": [],
+                "projects": {},
+                "total_builds": 0,
+                "running_count": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "message": "Builds sélectionnés introuvables - vérifiez TeamCity ou utilisez ?demo=true"
+            }
+        
+        # Utiliser la nouvelle structure hiérarchique
         projects_organized = create_complete_tree_structure(filtered_builds)
         
         running_count = len([b for b in filtered_builds if b.get("state") == "running"])
@@ -113,7 +132,8 @@ async def get_builds_dashboard():
             "total_builds": 0,
             "running_count": 0,
             "success_count": 0,
-            "failure_count": 0
+            "failure_count": 0,
+            "error": str(e)
         }
 
 def organize_builds_by_patterns(builds):
@@ -403,17 +423,22 @@ async def force_refresh_builds_tree():
         raise HTTPException(status_code=500, detail="Erreur lors du rechargement de l'arbre")
 
 @router.get("/builds/tree")
-async def get_builds_tree():
+async def get_builds_tree(demo: bool = False):
     """Crée automatiquement la structure complète des projets TeamCity pour la page de configuration"""
     try:
-        builds_data = await get_teamcity_builds_direct()
+        if demo:
+            # Mode démo avec données de test pour développement
+            builds_data = get_demo_builds_for_testing()
+        else:
+            builds_data = await get_teamcity_builds_direct()
         
         if not builds_data:
-            logger.warning("Aucune donnée TeamCity disponible")
+            logger.warning("Aucune donnée TeamCity disponible - utilisez ?demo=true pour tester")
             return {
                 "projects": {},
                 "total_builds": 0,
-                "selected_builds": []
+                "selected_builds": [],
+                "message": "Aucune donnée - ajoutez ?demo=true pour tester"
             }
         
         selected_builds = user_service.get_selected_builds()
@@ -433,6 +458,24 @@ async def get_builds_tree():
             "selected_builds": []
         }
 
+def get_demo_builds_for_testing():
+    """Données de test réalistes pour le développement - TEMPORAIRE"""
+    return [
+        # GO2 Version 612 avec sous-projets
+        {"buildTypeId": "Go2Version612_Plugins_BuildDebug", "name": "Build Debug", "projectName": "plugins"},
+        {"buildTypeId": "Go2Version612_ProductCompil_BuildRelease", "name": "Build Release", "projectName": "product compil"},
+        {"buildTypeId": "Go2Version612_ProductInstall_BuildDebug", "name": "Build Debug", "projectName": "product install"},
+        {"buildTypeId": "Go2Version612_InternalLib_BuildRelease", "name": "Build Release", "projectName": "internal librairie"},
+        
+        # Web Services (projet parent direct)
+        {"buildTypeId": "WebServices_Portal_Deploy", "name": "Deploy Portal", "projectName": "Web Services / GO2Portal"},
+        {"buildTypeId": "WebServices_FileServer_Build", "name": "Build FileServer", "projectName": "Web Services / FileServer"},
+        
+        # GO2 Version New avec sous-projets
+        {"buildTypeId": "Go2VersionNew_Plugins_BuildDebug", "name": "Build Debug", "projectName": "plugins"},
+        {"buildTypeId": "Go2VersionNew_ProductCompil_BuildRelease", "name": "Build Release", "projectName": "product compil"},
+    ]
+
 
 def extract_main_project_from_path(project_path: str) -> str:
     """Extrait le projet principal depuis le chemin complet TeamCity"""
@@ -447,7 +490,7 @@ def extract_main_project_from_path(project_path: str) -> str:
     return "Autres"
 
 def create_complete_tree_structure(builds_data):
-    """Crée une structure arborescente dynamique basée sur la hiérarchie réelle TeamCity"""
+    """Crée une structure arborescente intelligente avec regroupement automatique"""
     tree = {}
     
     for build in builds_data:
@@ -458,32 +501,13 @@ def create_complete_tree_structure(builds_data):
         if not project_name or not build_type_id:
             continue
         
-        # Analyser le projectName pour créer une hiérarchie dynamique
+        # Analyser le projectName pour créer une hiérarchie intelligente
         project_parts = [part.strip() for part in project_name.split("/")]
         
-        # Structure dynamique basée sur les vraies données TeamCity
-        if len(project_parts) >= 3:
-            # Structure complète: "Projet Principal / Catégorie / Sous-catégorie"
-            main_project = project_parts[0]
-            category = project_parts[1]
-            subcategory = project_parts[2]
-        elif len(project_parts) == 2:
-            # Structure: "Projet Principal / Catégorie"
-            main_project = project_parts[0]
-            category = project_parts[1]
-            subcategory = "Builds"
-        elif len(project_parts) == 1:
-            # Structure simple: "Projet Principal"
-            main_project = project_parts[0]
-            category = "General"
-            subcategory = "Builds"
-        else:
-            # Fallback pour cas exceptionnels
-            main_project = "Autres"
-            category = "Non classés"
-            subcategory = "Builds"
+        # RÈGLES INTELLIGENTES DE HIÉRARCHIE
+        main_project, category, subcategory = analyze_project_hierarchy(project_parts, build_type_id)
         
-        # Construire l'arborescence dynamiquement
+        # Construire l'arborescence
         if main_project not in tree:
             tree[main_project] = {
                 "name": main_project,
@@ -513,6 +537,52 @@ def create_complete_tree_structure(builds_data):
         })
     
     return tree
+
+def analyze_project_hierarchy(project_parts, build_type_id):
+    """Analyse intelligente de la hiérarchie des projets"""
+    
+    # CAS SPÉCIAUX : Web Services doit être projet parent
+    if any("Web Services" in part for part in project_parts):
+        return "Web Services", project_parts[-1] if len(project_parts) > 1 else "General", "Builds"
+    
+    # DÉTECTION DU PROJET PRINCIPAL via patterns dans buildTypeId
+    main_project = detect_main_project_from_buildtype(build_type_id, project_parts)
+    
+    # SOUS-PROJETS à regrouper sous le projet principal
+    subproject_patterns = ["plugins", "product compil", "product install", "internal librairie"]
+    
+    if len(project_parts) >= 1:
+        first_part_lower = project_parts[0].lower()
+        
+        # Si c'est un sous-projet connu, le regrouper sous le projet principal
+        for pattern in subproject_patterns:
+            if pattern in first_part_lower:
+                category = project_parts[0]  # plugins, product compil, etc.
+                subcategory = project_parts[1] if len(project_parts) > 1 else "Builds"
+                return main_project, category, subcategory
+    
+    # STRUCTURE NORMALE
+    if len(project_parts) >= 3:
+        return project_parts[0], project_parts[1], project_parts[2]
+    elif len(project_parts) == 2:
+        return project_parts[0], project_parts[1], "Builds"
+    elif len(project_parts) == 1:
+        return project_parts[0], "General", "Builds"
+    else:
+        return main_project, "Non classés", "Builds"
+
+def detect_main_project_from_buildtype(build_type_id, project_parts):
+    """Détecte le projet principal de manière générique"""
+    
+    # Utiliser la première partie du projet comme projet principal
+    if project_parts and len(project_parts) > 0:
+        return project_parts[0]
+    
+    # Fallback : extraire depuis buildTypeId (première partie avant _)
+    if build_type_id and "_" in build_type_id:
+        return build_type_id.split("_")[0]
+    
+    return "Projet Principal"
 
 @router.post("/builds/tree/selection")
 async def save_builds_selection(selection_data: dict):
