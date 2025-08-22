@@ -168,6 +168,43 @@ cp env.example .env
 python start_server.py
 ```
 
+## 🗄️ **Base de données (optionnelle)**
+
+L'application fonctionne avant tout en communiquant directement avec TeamCity (aucun mapping/valeurs en dur).
+La base de données est utilisée UNIQUEMENT pour persister les sélections utilisateur faites dans `config.html`.
+
+- **Pourquoi**: quand un utilisateur coche/décoche des builds dans `config.html`, sa sélection doit être mémorisée
+  pour que le dashboard l'affiche ensuite sans tout reconfigurer.
+- **Comment**: `POST /api/builds/tree/selection` enregistre la sélection dans la table `user_build_selections`.
+- **Lecture côté dashboard**: `GET /api/config` renvoie la liste `selectedBuilds` pour filtrer les builds.
+- **Robustesse**: si la base est indisponible, un fallback fichier est utilisé automatiquement:
+  `config/selected_builds.json`.
+
+En pratique, vous pouvez donc démarrer et utiliser le projet SANS base de données. Dès qu'une DB MySQL est
+disponible, l'application l'utilise et crée les tables si elles n'existent pas.
+
+### Variables `.env`
+
+Créez un fichier `.env` à la racine avec vos informations (exemple minimal):
+
+```
+# TeamCity
+TEAMCITY_URL=http://XXXXXXXXXXX
+TEAMCITY_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Base de données (optionnelle)
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=XXXX
+DB_NAME=XXX
+```
+
+Notes:
+- Ne commitez jamais le vrai token TeamCity ni les mots de passe.
+- Si la base est hors ligne ou vide, vos sélections seront quand même conservées via le fallback fichier.
+- Les tables sont créées automatiquement au démarrage (si la DB répond).
+
 ## 🧪 Tests
 
 ```bash
